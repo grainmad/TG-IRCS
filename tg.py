@@ -47,9 +47,8 @@ def on_message(client, userdata, msg):
     rsp = json.loads(msg.payload.decode('utf-8'))
     print(f"Received message '{str(rsp)}' on topic '{msg.topic}' with QoS {msg.qos}")
 
-    def unix_timestamp_to_datetime(timestamp, timezone_hour=0):
-        dt = datetime.fromtimestamp(timestamp)
-        dt = dt + timedelta(hours=timezone_hour)
+    def unix_timestamp_to_datetime(timestamp, timezone_hour=8):
+        dt = datetime.fromtimestamp(timestamp, tz=timezone(timedelta(hours=timezone_hour)))
         return dt.strftime("%Y-%m-%d/%H:%M:%S")
     def seconds_to_hms(seconds):
         m, s = divmod(seconds, 60)
