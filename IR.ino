@@ -24,6 +24,13 @@ const char* SUBTOPIC="xxx";  //设置订阅主题
 
 
 
+// flash键 配网络
+const uint16_t flashPin = 0; // GPIO0 D3
+
+// AP
+const char* ap_ssid="ESP8266_AP";
+const char* ap_password="12345678";
+
 // 定义红外接收的管脚
 const uint16_t kRecvPin = 14; // GPIO14 D5
 const uint32_t kBaudRate = 115200;
@@ -77,6 +84,15 @@ JsonDocument doc;
 DynamicJsonDocument rdoc(1536);
 
 
+
+void LED_flash(int n) { // 闪烁n次
+  for (int i=0; i<n; i++) {
+    digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
+    delay(200);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);
+  }
+}
 
 uint8_t connect_mqtt(){
   if(WiFi.status()!=WL_CONNECTED) return -1;
@@ -324,12 +340,16 @@ void setup() {
   irrecv.setTolerance(kTolerancePercentage);  // Override the default tolerance.
   irrecv.enableIRIn();  // Start the receiver
   
+  // network
+  digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
   WiFiManager wifiManager;
-  if (!wifiManager.autoConnect("ESP8266_AP", "12345678")) { // 闪存中默认配置如果无法连接，则打开AP输入配置持久化后重启
+  wifiManager.setConnectTimeout(30); // 连接wifi 30秒超时
+  if (!wifiManager.autoConnect(ap_ssid, ap_password)) { // 优先连接保存的WiFi配置， true如果成功连接到 WiFi（自动连接或通过配网完成）
     Serial.println("Failed to connect, restarting...");
     delay(3000);
-    ESP.restart();
+    ESP.restart(); // 连接失败重启
   }
+  LED_flash(5); //成功闪烁4下
 
   Serial.printf("macAddress is %s\r\n",WiFi.macAddress().c_str());  
   connect_mqtt();  // 连接MQTT
@@ -366,14 +386,6 @@ void setup() {
   Serial.println(timeClient.getFormattedTime() + " " + timeClient.getEpochTime());
 }
 
-void LED_flash(int n) { // 闪烁n次
-  for (int i=0; i<n; i++) {
-    digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
-    delay(200);
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(200);
-  }
-}
 
 void loop() {
   // task slover
@@ -452,5 +464,17 @@ void loop() {
     tag_mqtt = 0;
     timeClient.update();
     // Serial.println(timeClient.getFormattedTime()+" "+timeClient.getEpochTime());
+  }
+  if (digitalRead(flashPin) == LOW) {
+    Serial.println("Flash button pressed!");
+    digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
+    WiFiManager wifiManager;
+    wifiManager.setConnectTimeout(30); // 连接wifi 30秒超时
+    if (!wifiManager.startConfigPortal(ap_ssid, ap_password)) { // 强制配网
+      Serial.println("Failed to connect, restarting...");
+      delay(3000);
+      ESP.restart(); // 连接失败重启
+    }
+    LED_flash(5); //成功闪烁4下
   }
 }   
