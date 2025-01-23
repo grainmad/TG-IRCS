@@ -24,7 +24,6 @@ const char* SUBTOPIC="xxx";  //设置订阅主题
 
 
 
-
 // 定义红外接收的管脚
 const uint16_t kRecvPin = 14; // GPIO14 D5
 const uint32_t kBaudRate = 115200;
@@ -367,6 +366,15 @@ void setup() {
   Serial.println(timeClient.getFormattedTime() + " " + timeClient.getEpochTime());
 }
 
+void LED_flash(int n) { // 闪烁n次
+  for (int i=0; i<n; i++) {
+    digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
+    delay(200);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);
+  }
+}
+
 void loop() {
   // task slover
   for (int i=0; i<TASK_N; i++) {
@@ -422,6 +430,7 @@ void loop() {
   if (tag_wifi>=1) {
     // Serial.print("itv check WiFi: ");
     if(WiFi.status()!=WL_CONNECTED){
+      LED_flash(2); // 闪烁2次 wifi 断联
       Serial.println("WiFi disconnected, trying to reconnect...");
       WiFi.reconnect();
     } else {
@@ -436,6 +445,7 @@ void loop() {
         // Serial.println("mqtt connected");
         pc.loop();                                      // 发送心跳信息
     }else{
+      LED_flash(1); // 闪烁1次 mqtt 断联
       Serial.println("mqtt disconnected, trying to reconnect...");
       connect_mqtt();                                  // 如果和MQTT服务器断开连接,那么重连
     }

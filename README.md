@@ -1,6 +1,6 @@
 
 # TG-IRCS
-
+![](tg-ircs.jpg)
 使用Telegram机器人通过MQTT服务器与esp8266单片机通信，实现功能：
 - 复制红外线，并持久化于闪存
 - 定时定期定量执行红外指令
@@ -100,14 +100,17 @@ python tg.py
 ### 步骤
 
 1. 修改`IR.ino`
-``` c
-const char* WIFINAME="xxx";  //设置WIFI名称
-const char* WIFIPASSWORD="xxx";  //设置WIFI密码
-const char* MQTTSERVER="xxx"; //设置MQTT服务器IP地址
-const int MQTTPORT=xxx;  //设置MQTT服务器端口
-const char* MQTTUSER="xxx";  //设置MQTT用户名
-const char* MQTTPW="xxx";  //设置MQTT密码
-const char* PUBTOPIC="xxx"; //设置发布主题
-const char* SUBTOPIC="xxx";  //设置订阅主题
-```
+    ``` c
+    const char* MQTTSERVER="xxx"; //设置MQTT服务器IP地址
+    const int MQTTPORT=xxx;  //设置MQTT服务器端口
+    const char* MQTTUSER="xxx";  //设置MQTT用户名
+    const char* MQTTPW="xxx";  //设置MQTT密码
+    const char* PUBTOPIC="xxx"; //设置发布主题
+    const char* SUBTOPIC="xxx";  //设置订阅主题
+    ```
 2. 编译烧录
+3. 配置WiFi  
+    如果设备保存了之前的 WiFi 信息且能成功连接到 WiFi，则跳过 AP 模式，直接运行程序。  
+    如果设备无法连接到 WiFi，则自动启动 AP 模式：设备开启一个热点（默认 SSID 为 `ESP8266_AP`，密码为 `12345678`）。连接到热点后，访问 `192.168.4.1` 打开配置页面。  
+    在配置页面中，选择附近的 WiFi 网络，并输入对应密码，如果连接成功，设备将保存配置信息并自动重启。  
+    在设备运行中断开WiFi，将定期尝试重连之前的WiFi。
