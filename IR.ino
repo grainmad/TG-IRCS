@@ -1,8 +1,8 @@
 #include <ESP8266WiFi.h>
-// PUBSUB 库中的默认有效负载 256 Bytes 修改头文件PubSubClient.h #define MQTT_MAX_PACKET_SIZE 1536
+// PUBSUB 库中的默认有效负载 256 Bytes修改头文件PubSubClient.h #define MQTT_MAX_PACKET_SIZE 1536
 #include <PubSubClient.h>
 #include <IRremoteESP8266.h>
-#include <IRsend.h> 
+#include <IRsend.h>  //红外头文件
 #include <IRrecv.h>
 #include <IRac.h>
 #include <IRtext.h>
@@ -12,17 +12,17 @@
 #include <ArduinoJson.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h> 
+#include <WiFiManager.h>
 
 
-
-const char* WIFINAME="xxx";  //设置WIFI名称
-const char* WIFIPASSWORD="xxx";  //设置WIFI密码
 const char* MQTTSERVER="xxx"; //设置MQTT服务器IP地址
 const int MQTTPORT=xxx;  //设置MQTT服务器端口
 const char* MQTTUSER="xxx";  //设置MQTT用户名
 const char* MQTTPW="xxx";  //设置MQTT密码
 const char* PUBTOPIC="xxx"; //设置发布主题
 const char* SUBTOPIC="xxx";  //设置订阅主题
+
+
 
 
 // 定义红外接收的管脚
@@ -46,7 +46,7 @@ IRsend irsend(kIrLed);  // 将kIrLed设置发送信息
 
 // 持久化红外指令数组到闪存文件系统
 String copy_base_filename = "/copy_signal";
-#define COPY_N 5
+#define COPY_N 8
 uint16_t copy_signal[COPY_N][256];
 uint16_t copy_length[COPY_N] = {0};
 String copy_name[COPY_N];
@@ -78,11 +78,6 @@ JsonDocument doc;
 DynamicJsonDocument rdoc(1536);
 
 
-void connect_wifi(){
-  WiFi.mode(WIFI_STA);                    //设置无线终端模式
-  WiFi.disconnect();                      //清除配置缓存
-  WiFi.begin(WIFINAME, WIFIPASSWORD);      //开始连接
-}
 
 uint8_t connect_mqtt(){
   if(WiFi.status()!=WL_CONNECTED) return -1;
@@ -313,65 +308,63 @@ void record_copy(String& sc) {
 
 
 void setup() {
-    // led bultin
-    pinMode(LED_BUILTIN, OUTPUT);
-    digitalWrite(LED_BUILTIN, HIGH);
+  // led bultin
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
 
-    // serial
-    Serial.begin(kBaudRate, SERIAL_8N1, SERIAL_TX_ONLY);
-    while (!Serial)  // Wait for the serial connection to be establised.
-    delay(50);
-    Serial.println();
-    
-    // irsend 
-    irsend.begin();
-    
-    // irrecv
-    irrecv.setTolerance(kTolerancePercentage);  // Override the default tolerance.
-    irrecv.enableIRIn();  // Start the receiver
+  // serial
+  Serial.begin(kBaudRate, SERIAL_8N1, SERIAL_TX_ONLY);
+  while (!Serial)  // Wait for the serial connection to be establised.
+  delay(50);
+  Serial.println();
+  
+  // irsend 
+  irsend.begin();
+  
+  // irrecv
+  irrecv.setTolerance(kTolerancePercentage);  // Override the default tolerance.
+  irrecv.enableIRIn();  // Start the receiver
+  
+  WiFiManager wifiManager;
+  if (!wifiManager.autoConnect("ESP8266_AP", "12345678")) { // 闪存中默认配置如果无法连接，则打开AP输入配置持久化后重启
+    Serial.println("Failed to connect, restarting...");
+    delay(3000);
+    ESP.restart();
+  }
 
-    // network
-    connect_wifi(); 
-    for (int i=10; WiFi.status()!=WL_CONNECTED && i>0; i--) {
-      delay(1000);
-      Serial.printf("connect WIFI...%ds\r\n",i);
+  Serial.printf("macAddress is %s\r\n",WiFi.macAddress().c_str());  
+  connect_mqtt();  // 连接MQTT
+  wf.attach(30, itv_wifi);
+  mt.attach(5, itv_mqtt);
+
+  // file system
+  SPIFFS.begin();
+  
+  // load copyed IR
+  for (int i=0; i<COPY_N; i++) {
+    File f = SPIFFS.open(copy_base_filename+i, "r");
+    if (f) {
+      Serial.println(copy_base_filename + i + " content:");
+      
+      // load from disk
+      f.read((uint8_t *) &copy_length[i], 2);
+      f.read((uint8_t *) copy_signal[i], copy_length[i]*2);
+      copy_name[i] = f.readString();
+      f.close();
+
+      // print
+      Serial.println(copy_length[i]);
+      for (int t=0; t<copy_length[i]; t++)
+        Serial.printf("%d ", copy_signal[i][t]);
+      Serial.println("");  
+      Serial.println(copy_name[i]);
     }
-    if (WiFi.status()==WL_CONNECTED) {
-      Serial.printf("connect WIFI %s success,local IP is %s\r\n",WiFi.SSID().c_str(),WiFi.localIP().toString().c_str());
-    }
-    Serial.printf("macAddress is %s\r\n",WiFi.macAddress().c_str());  
-    connect_mqtt();  // 连接MQTT
-    wf.attach(30, itv_wifi);
-    mt.attach(5, itv_mqtt);
-
-    // file system
-    SPIFFS.begin();
-    
-    // load copyed IR
-    for (int i=0; i<COPY_N; i++) {
-      File f = SPIFFS.open(copy_base_filename+i, "r");
-      if (f) {
-        Serial.println(copy_base_filename + i + " content:");
-        
-        // load from disk
-        f.read((uint8_t *) &copy_length[i], 2);
-        f.read((uint8_t *) copy_signal[i], copy_length[i]*2);
-        copy_name[i] = f.readString();
-        f.close();
-
-        // print
-        Serial.println(copy_length[i]);
-        for (int t=0; t<copy_length[i]; t++)
-          Serial.printf("%d ", copy_signal[i][t]);
-        Serial.println("");  
-        Serial.println(copy_name[i]);
-      }
-    }
-    
-    // ntp
-    timeClient.begin();
-    timeClient.update();
-    Serial.println(timeClient.getFormattedTime() + " " + timeClient.getEpochTime());
+  }
+  
+  // ntp
+  timeClient.begin();
+  timeClient.update();
+  Serial.println(timeClient.getFormattedTime() + " " + timeClient.getEpochTime());
 }
 
 void loop() {
@@ -430,7 +423,7 @@ void loop() {
     // Serial.print("itv check WiFi: ");
     if(WiFi.status()!=WL_CONNECTED){
       Serial.println("WiFi disconnected, trying to reconnect...");
-     connect_wifi();
+      WiFi.reconnect();
     } else {
       // Serial.println("WiFi connected");
     }
