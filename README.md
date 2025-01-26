@@ -99,19 +99,13 @@ python tg.py
 * Arduino IDE
 ### 步骤
 
-1. 修改`IR.ino`
-    ``` c
-    const char* MQTTSERVER="xxx"; //设置MQTT服务器IP地址
-    const int MQTTPORT=xxx;  //设置MQTT服务器端口
-    const char* MQTTUSER="xxx";  //设置MQTT用户名
-    const char* MQTTPW="xxx";  //设置MQTT密码
-    const char* PUBTOPIC="xxx"; //设置发布主题
-    const char* SUBTOPIC="xxx";  //设置订阅主题
-    ```
-2. 编译烧录
-3. 配置WiFi  
+1. 编译烧录
+2. 配置WiFi和MQTT参数  
     - 设备启动时自动配网  
-    如果设备保存了之前的 WiFi 信息且能成功连接到 WiFi，则跳过 AP 模式，直接运行程序。否则启动 AP 模式：设备开启一个热点（默认 SSID 为 `ESP8266_AP`，密码为 `12345678`）。连接到热点后，访问 `192.168.4.1` 打开配置页面。在配置页面中，选择附近的WiFi网络，并输入对应密码。如果连接成功，设备将保存配置信息；如果连接失败，将重启。  
+    如果设备保存了之前的 WiFi 信息且能成功连接到 WiFi，则跳过 AP 模式，直接运行程序。否则启动 AP 模式：设备开启一个热点（默认 SSID 为 `ESP8266_AP`，密码为 `12345678`）。连接到热点后，访问 `192.168.4.1` 打开配置页面。
+    - 在配置页面中
+        - 选择附近的WiFi网络，并输入对应密码。
+        - 输入对应的MQTT服务器参数，默认值从闪存中加载，修改后会保存到闪存，输入空值视为默认值。
     - 设备运行时主动配网  
     在设备运行中按下flash键，启动AP模式配网。
     - 自动配网或主动配网时会长亮LED，连接成功会闪烁4下，否则将重启设备。

@@ -15,14 +15,18 @@
 #include <WiFiManager.h>
 
 
-const char* MQTTSERVER="xxx"; //设置MQTT服务器IP地址
-const int MQTTPORT=xxx;  //设置MQTT服务器端口
-const char* MQTTUSER="xxx";  //设置MQTT用户名
-const char* MQTTPW="xxx";  //设置MQTT密码
-const char* PUBTOPIC="xxx"; //设置发布主题
-const char* SUBTOPIC="xxx";  //设置订阅主题
+#define MQTT_PARAM_CNT 6
 
+#define MQTTSERVER 0
+#define MQTTPORT 1
+#define MQTTUSER 2
+#define MQTTPASSWORD 3
+#define MQTTPUBTOPIC 4
+#define MQTTSUBTOPIC 5
 
+#define MQTT_PARAM_LEN 32
+char param[6][32];
+String mqtt_param_filename = "/mqtt_param";
 
 // flash键 配网络
 const uint16_t flashPin = 0; // GPIO0 D3
@@ -94,14 +98,61 @@ void LED_flash(int n) { // 闪烁n次
   }
 }
 
+void save_mqtt_param() {
+  File f = SPIFFS.open(mqtt_param_filename, "w");
+  for (int i=0; i<MQTT_PARAM_CNT; i++) {
+    f.write((char *)&param[i], MQTT_PARAM_LEN);
+  }
+  f.close();
+}
+void load_mqtt_param() {
+  File f = SPIFFS.open(mqtt_param_filename, "r");
+  for (int i=0; i<MQTT_PARAM_CNT; i++) {
+    f.read((uint8_t *) &param[i], MQTT_PARAM_LEN);
+  }
+  f.close();
+}
+
+void connect_wifi(int init, int fail_rst) {
+  load_mqtt_param();
+  digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
+  WiFiManager wifiManager;
+  wifiManager.setConnectTimeout(30); // 连接wifi 30秒超时
+  WiFiManagerParameter wmp[] = {
+    WiFiManagerParameter("mqtt_server", "mqtt server", param[0], MQTT_PARAM_LEN-1),
+    WiFiManagerParameter("mqtt_port", "mqtt port", param[1], MQTT_PARAM_LEN-1),
+    WiFiManagerParameter("mqtt_user", "mqtt user", param[2], MQTT_PARAM_LEN-1),
+    WiFiManagerParameter("mqtt_password", "mqtt password", param[3], MQTT_PARAM_LEN-1),
+    WiFiManagerParameter("mqtt_pubtopic", "publish topic", param[4], MQTT_PARAM_LEN-1),
+    WiFiManagerParameter("mqtt_subtopic", "subscribe topic", param[5], MQTT_PARAM_LEN-1)
+  };
+  for (int i=0; i<MQTT_PARAM_CNT; i++) {
+    wifiManager.addParameter(&wmp[i]);
+  }
+  if (!(init?wifiManager.autoConnect(ap_ssid, ap_password):wifiManager.startConfigPortal(ap_ssid, ap_password))) { // 优先连接保存的WiFi配置， true如果成功连接到 WiFi（自动连接或通过配网完成）
+    Serial.println("Failed to connect, restarting...");
+    delay(3000);
+    if (!fail_rst) return ;
+    ESP.restart(); // 连接失败重启
+  }
+  LED_flash(5); //成功闪烁4下
+  for (int i=0; i<MQTT_PARAM_CNT; i++) {
+    Serial.println(String("web read param: ")+wmp[i].getValue());
+    if (strlen(wmp[i].getValue())) strcpy(param[i], wmp[i].getValue());
+    Serial.println(String("memery param: ")+param[i]);
+  }
+  save_mqtt_param();
+}
+
+
 uint8_t connect_mqtt(){
   if(WiFi.status()!=WL_CONNECTED) return -1;
-  pc.setServer(MQTTSERVER, MQTTPORT);
-  if(!pc.connect(WiFi.macAddress().c_str(), MQTTUSER, MQTTPW)){     //以物理地址为ID去连接MQTT服务器
+  pc.setServer(param[MQTTSERVER], atoi(param[MQTTPORT]));
+  if(!pc.connect(WiFi.macAddress().c_str(), param[MQTTUSER], param[MQTTPASSWORD])){     //以物理地址为ID去连接MQTT服务器
     Serial.println("connect MQTT fail");
     return -1;
   }
-  pc.subscribe(SUBTOPIC);    
+  pc.subscribe(param[MQTTSUBTOPIC]);    
   pc.setCallback(sub_msg_hander);                        //绑定订阅回调函数
   Serial.println("connect MQTT success");
   return 0;
@@ -120,7 +171,7 @@ void msg_pub_print(int code, const String& msg) {
   rdoc["message"] = msg;
   String result;
   serializeJson(rdoc, result);
-  pc.publish(PUBTOPIC, result.c_str());
+  pc.publish(param[MQTTPUBTOPIC], result.c_str());
   Serial.println(result);
 }
 
@@ -339,22 +390,7 @@ void setup() {
   // irrecv
   irrecv.setTolerance(kTolerancePercentage);  // Override the default tolerance.
   irrecv.enableIRIn();  // Start the receiver
-  
-  // network
-  digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
-  WiFiManager wifiManager;
-  wifiManager.setConnectTimeout(30); // 连接wifi 30秒超时
-  if (!wifiManager.autoConnect(ap_ssid, ap_password)) { // 优先连接保存的WiFi配置， true如果成功连接到 WiFi（自动连接或通过配网完成）
-    Serial.println("Failed to connect, restarting...");
-    delay(3000);
-    ESP.restart(); // 连接失败重启
-  }
-  LED_flash(5); //成功闪烁4下
 
-  Serial.printf("macAddress is %s\r\n",WiFi.macAddress().c_str());  
-  connect_mqtt();  // 连接MQTT
-  wf.attach(30, itv_wifi);
-  mt.attach(5, itv_mqtt);
 
   // file system
   SPIFFS.begin();
@@ -379,6 +415,15 @@ void setup() {
       Serial.println(copy_name[i]);
     }
   }
+
+  // network
+  connect_wifi(1, 1);
+
+  Serial.printf("macAddress is %s\r\n",WiFi.macAddress().c_str());  
+  connect_mqtt();  // 连接MQTT
+  wf.attach(30, itv_wifi);
+  mt.attach(5, itv_mqtt);
+
   
   // ntp
   timeClient.begin();
@@ -467,14 +512,6 @@ void loop() {
   }
   if (digitalRead(flashPin) == LOW) {
     Serial.println("Flash button pressed!");
-    digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
-    WiFiManager wifiManager;
-    wifiManager.setConnectTimeout(30); // 连接wifi 30秒超时
-    if (!wifiManager.startConfigPortal(ap_ssid, ap_password)) { // 强制配网
-      Serial.println("Failed to connect, restarting...");
-      delay(3000);
-      ESP.restart(); // 连接失败重启
-    }
-    LED_flash(5); //成功闪烁4下
+    connect_wifi(0,0);
   }
 }   
