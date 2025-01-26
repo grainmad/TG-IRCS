@@ -25,7 +25,7 @@
 #define MQTTSUBTOPIC 5
 
 #define MQTT_PARAM_LEN 32
-char param[6][32];
+char param[MQTT_PARAM_CNT][MQTT_PARAM_LEN];
 String mqtt_param_filename = "/mqtt_param";
 
 // flash键 配网络
