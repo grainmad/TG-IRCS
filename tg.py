@@ -170,7 +170,7 @@ def bot_exec(message):
     def parse_freq(cy):
         # ?d?h?m?s
         if all(ch in "dhms0123456789" for ch in cy):
-            sc = int(time.time())
+            sc = 0
             num = 0
             for i in cy:
                 if i.isdigit():
@@ -181,7 +181,7 @@ def bot_exec(message):
                     elif i == 'm': sc += num*60
                     else: sc += num
                     num = 0
-            return sc+num
+            return sc
         return 0
     def parse_remain(rm):
         if rm.isdigit():
