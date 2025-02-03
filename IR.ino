@@ -447,12 +447,15 @@ void loop() {
     }
   }
   // exec task
-  while (eqsz>0) {
-    int xid = exec_queue[--eqsz];
+  for (int i=0; i<eqsz; i++) {
+    int xid = exec_queue[i];
     irsend.sendRaw(copy_signal[xid], copy_length[xid], 38);
     rdoc.clear();
     msg_pub_print(200, "task:exec "+copy_name[xid]+" success");
+    delay(200);
   }
+  eqsz = 0;
+
   // copy cmd
   if (copy_mode) {
     irrecv.resume();

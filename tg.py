@@ -1,5 +1,6 @@
 import telebot
 import requests
+import copy
 import os
 import json
 import json
@@ -53,7 +54,8 @@ def on_message(client, userdata, msg):
     def seconds_to_hms(seconds):
         m, s = divmod(seconds, 60)
         h, m = divmod(m, 60)
-        return f"{h:02d}h{m:02d}m{s:02d}s"
+        d, h = divmod(h, 24)
+        return f"{d}d{h:02d}h{m:02d}m{s:02d}s"
     rt = rsp["message"]+"\n"
     if rsp["code"] == 200:
         if "task" in rsp:
@@ -85,7 +87,7 @@ def mqtt_connect():
 mqttClient = mqtt_connect()
 
 
-user = [ADMIN_CHAT_ID]
+user = {ADMIN_CHAT_ID}
 
 
 
@@ -98,8 +100,13 @@ def Permissions(func):
             return 
         data = func(*args, **kwargs)  # 调用被装饰的函数，并传递所有参数
         if data:
-            mqttClient.publish(PUB_TOPIC, str(data), 0)
-            bot.reply_to(message, f"{str(data)} is transmitted")
+            if isinstance(data, list):
+                for i in data:
+                    mqttClient.publish(PUB_TOPIC, str(i), 0)
+                bot.reply_to(message, f"{str(data)} is transmitted")
+            else:
+                mqttClient.publish(PUB_TOPIC, str(data), 0)
+                bot.reply_to(message, f"{str(data)} is transmitted")
     return wrapper
 
 @bot.message_handler(commands=['copy'])
@@ -108,8 +115,14 @@ def bot_copy(message):
     args = message.text.split(' ')[1:]
     data = {"cmd":"copy", "name":"", "old":"", "chat_id":message.chat.id}
 
-    if 0<len(args) and args[0] : 
-        data["name"] = args[0]
+    if 0<len(args):
+        if re.match(r'^[a-zA-Z0-9_-]+$', args[0]):
+            data["name"] = args[0]
+        else:
+            # bot.reply_to(message, "name format error", parse_mode="Markdown") 
+            # 仅支持字母、数字、下划线、中划线
+            bot.reply_to(message, "name format error, only supports letters, numbers, underscores, and hyphens", parse_mode="Markdown")
+            return 
     else:
         bot.reply_to(message, "not set name", parse_mode="Markdown")
         return 
@@ -134,7 +147,7 @@ def bot_exec(message):
     def parse_start(ts):
         # 时间戳
         if ts.isdigit():
-            return ts
+            return int(ts)
         # ?d?h?m?s
         if all(ch in "dhms0123456789" for ch in ts):
             cur = int(time.time())
@@ -177,15 +190,21 @@ def bot_exec(message):
         return 0
     def parse_remain(rm):
         if rm.isdigit():
-            return rm
+            return int(rm)
         return 1
     if 1<len(args) and args[1] : 
         data["start"] = parse_start(args[1])
     if 2<len(args) and args[2] : 
         data["freq"] = parse_freq(args[2])
     if 3<len(args) and args[3] : 
-        data["remain"] = parse_freq(args[3])
-    return data
+        data["remain"] = parse_remain(args[3])
+    cmds = data["name"].split(",")
+    datalist = []
+    for it in cmds:
+        data["name"] = it
+        datalist.append(copy.copy(data))
+        # data["start"]+=1 # 确保执行顺序
+    return datalist
     
 @bot.message_handler(commands=['terminate'])
 @Permissions
@@ -240,7 +259,7 @@ def bot_adduser(message):
         bot.reply_to(message, f"only administrators can operate")
         return 
     for i in message.text.split(' ')[1:]:
-        user.append(int(i))
+        user.add(int(i))
     bot.reply_to(message, f"user list:\n {str(user)}")
 
 
@@ -329,4 +348,6 @@ task - 获取编号为id的任务信息
 cmdlist - 当前学习的命令
 adduser - 添加可使用机器人指令的用户
 auth - 向管理员认证，申请使用指令
+start - 开始
+help - 帮助
 """
