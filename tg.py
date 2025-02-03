@@ -203,7 +203,7 @@ def bot_exec(message):
     for it in cmds:
         data["name"] = it
         datalist.append(copy.copy(data))
-        # data["start"]+=1 # 确保执行顺序
+        data["start"]+=1 # 确保执行顺序
     return datalist
     
 @bot.message_handler(commands=['terminate'])
