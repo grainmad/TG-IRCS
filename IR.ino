@@ -56,7 +56,7 @@ IRsend irsend(kIrLed);  // 将kIrLed设置发送信息
 
 // 持久化红外指令数组到闪存文件系统
 String copy_base_filename = "/copy_signal";
-#define COPY_N 8
+#define COPY_N 16
 uint16_t copy_signal[COPY_N][256];
 uint16_t copy_length[COPY_N] = {0};
 String copy_name[COPY_N];
@@ -65,7 +65,7 @@ String comming_copy_name;
 int copy_mode = 0;
 
 // 同时执行的最大任务数
-#define TASK_N 8
+#define TASK_N 16
 struct Task {
   int xid;
   uint64_t remain;
@@ -84,7 +84,7 @@ NTPClient timeClient(ntpUDP);
 WiFiClient wc;
 PubSubClient pc(wc);
 // 收发json消息
-JsonDocument doc;
+DynamicJsonDocument doc(1536);
 DynamicJsonDocument rdoc(1536);
 
 
@@ -243,35 +243,45 @@ void solve_msg(String Msg) {
   }
 
   if (cmd == "exec") {                            // exec cmd
-    String name = doc["name"];
-    uint64_t start = doc["start"];
-    uint64_t freq = doc["freq"];
-    uint64_t remain = doc["remain"];
-    // Serial.println(name+" "+start+" "+freq);
-    int xid = 0;
-    for (; xid<COPY_N; xid++) {
-      if (name == copy_name[xid]) {
-        break;
+    String cmds = doc["name"];
+    Serial.println(cmds);
+    int cmds_len = cmds.length();
+    for (int i=0, t=0, j; (j=i)<cmds_len; t++, i=j+1) { // 以逗号分割命令
+      while (j<cmds_len && cmds.charAt(j) != ',') j++;
+      
+      String name = cmds.substring(i,j);
+      uint64_t start = doc["start"]; 
+      start += t;// 指令间间隔一秒
+      uint64_t freq = doc["freq"];
+      uint64_t remain = doc["remain"];
+      // Serial.println(name+" "+start+" "+freq);
+      int xid = 0;
+      for (; xid<COPY_N; xid++) {
+        if (name == copy_name[xid]) {
+          break;
+        }
       }
+      // not exist name 
+      if (xid == COPY_N) {
+        msg_pub_print(400, "exec failure, cmd name ["+name+"] not exist!");
+        continue;
+      }
+      // find first not use task place
+      int task_id = 0;
+      while (task_id<TASK_N && tasklist[task_id].remain > 0) task_id++;
+      if (task_id == TASK_N) {
+        msg_pub_print(400, String("exec failure, tasklist is full, max is ")+TASK_N);
+        continue;
+      }
+      tasklist[task_id].remain = remain;
+      tasklist[task_id].freq = freq;
+      tasklist[task_id].start = start;
+      tasklist[task_id].cmd = name;
+      tasklist[task_id].xid = xid;
+      msg_pub_print(200, "add "+name+" to tasklist");
+
     }
-    // not exist name 
-    if (xid == COPY_N) {
-      msg_pub_print(400, "exec failure, cmd name ["+name+"] not exist!");
-      return ;
-    }
-    // find first not use task place
-    int task_id = 0;
-    while (task_id<TASK_N && tasklist[task_id].remain > 0) task_id++;
-    if (task_id == TASK_N) {
-      msg_pub_print(400, String("exec failure, tasklist is full, max is ")+TASK_N);
-      return ;
-    }
-    tasklist[task_id].remain = remain;
-    tasklist[task_id].freq = freq;
-    tasklist[task_id].start = start;
-    tasklist[task_id].cmd = name;
-    tasklist[task_id].xid = xid;
-    msg_pub_print(200, "add "+name+" to tasklist");
+    
   }
 
   if (cmd == "copy") {                   // copy cmd 
@@ -314,19 +324,13 @@ void solve_msg(String Msg) {
 }
 
 void sub_msg_hander(char* topic,byte* payload,unsigned int length){
-  Serial.printf("MQTT subscribe data from topic: %s\r\n",topic);    //输出调试信息,得知是哪个主题发来的消息
-  for(unsigned int i=0;i<length;++i){             //读出信息里的每个字节
-    Serial.print((char)payload[i]);             //以文本形式读取就这样,以16进制读取的话就把(char)删掉
+  Serial.printf("MQTT subscribe data from topic: %s\r\n",topic);
+  for(unsigned int i=0;i<length;++i){
+    Serial.print((char)payload[i]);
   }
   Serial.println();
-  char msg[128];
-  if (length<128) {
-    for (int i=0; i<length; i++) {
-      msg[i] = (char)payload[i];
-    }
-    msg[length] = '\0';
-  }
-  String Msg = String(msg);
+  payload[length] = 0;
+  String Msg = String((char*)payload);
   solve_msg(Msg);
 }
 
@@ -446,13 +450,13 @@ void loop() {
       tasklist[i].remain--;
     }
   }
-  // exec task
+  // exec task 
   for (int i=0; i<eqsz; i++) {
     int xid = exec_queue[i];
     irsend.sendRaw(copy_signal[xid], copy_length[xid], 38);
     rdoc.clear();
     msg_pub_print(200, "task:exec "+copy_name[xid]+" success");
-    delay(200);
+    delay(800); // 同时执行的指令，间隔0.8s
   }
   eqsz = 0;
 

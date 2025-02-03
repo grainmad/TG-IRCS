@@ -100,13 +100,8 @@ def Permissions(func):
             return 
         data = func(*args, **kwargs)  # 调用被装饰的函数，并传递所有参数
         if data:
-            if isinstance(data, list):
-                for i in data:
-                    mqttClient.publish(PUB_TOPIC, str(i), 0)
-                bot.reply_to(message, f"{str(data)} is transmitted")
-            else:
-                mqttClient.publish(PUB_TOPIC, str(data), 0)
-                bot.reply_to(message, f"{str(data)} is transmitted")
+            mqttClient.publish(PUB_TOPIC, str(data), 0)
+            bot.reply_to(message, f"{str(data)} is transmitted")
     return wrapper
 
 @bot.message_handler(commands=['copy'])
@@ -198,17 +193,12 @@ def bot_exec(message):
         data["freq"] = parse_freq(args[2])
     if 3<len(args) and args[3] : 
         data["remain"] = parse_remain(args[3])
-    cmds = data["name"].split(",")
-    datalist = []
-    for it in cmds:
-        data["name"] = it
-        datalist.append(copy.copy(data))
-        data["start"]+=1 # 确保执行顺序
-    return datalist
+    
+    return data
     
 @bot.message_handler(commands=['terminate'])
 @Permissions
-def bot_exec(message):
+def bot_terminate(message):
     args = message.text.split(' ')[1:]
     data = {"cmd":"terminate", "taskid":-1, "chat_id":message.chat.id}
     
@@ -279,6 +269,7 @@ help="""
 `/exec name [start] [freq] [remain]`
 - `name`  
     - 执行命令，单片机校验不存在则执行失败
+    - 多条命令以逗号分割，然后命令会顺序执行
 - `start`  
     - 指定执行开始时间，格式：
         - [Unix 时间戳](https://zh.wikipedia.org/wiki/UNIX%E6%97%B6%E9%97%B4)  
@@ -295,15 +286,15 @@ help="""
     - 剩余执行次数  
     - 默认 `1`
     
-`/terminate id`
+`/terminate id`  
 - 终止编号为id的任务
 
 `/copy name [old]`
 - `name`  
-    - 学习红外命令的名称  
+    - 学习红外命令的名称，非空，且只能包含数字、字母、下划线、减号
     - 若`old`未指定
         - `name`已存在则更新`name`
-        - `name`已存在则从剩余容量中分配，容量已满（默认 5）则轮转覆盖。
+        - `name`已存在则从剩余容量中分配，容量已满（默认 8）则轮转覆盖。
 - `old`  
     - 替换旧命令，单片机校验旧命令不存在则执行失败  
     - 默认 `""`
@@ -325,7 +316,6 @@ help="""
 
 `/auth`  
 - 向管理员认证，申请使用指令
-
 """
 
 @bot.message_handler(commands=['help'])
