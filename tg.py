@@ -6,40 +6,23 @@ import json
 import json
 from datetime import datetime, timezone, timedelta
 import re
-from dotenv import load_dotenv
 from paho.mqtt import client as mqtt
 import uuid
 import time
 
-load_dotenv()
-BOT_TOKEN = os.getenv('IR_BOT_TOKEN')
-SUB_TOPIC = os.getenv('IR_SUB_TOPIC')
-PUB_TOPIC = os.getenv('IR_PUB_TOPIC')
-USERNAME = os.getenv('IR_USERNAME')
-PASSWORD = os.getenv('IR_PASSWORD')
-ADMIN_CHAT_ID = int(os.getenv('IR_ADMIN_CHAT_ID'))
-MQTTHOST = os.getenv('IR_MQTTHOST')
-MQTTPORT = int(os.getenv('IR_MQTTPORT'))
+import json
 
-bot = telebot.TeleBot(BOT_TOKEN)
+with open("env.json", "r") as f:
+    env = json.load(f)
 
-print("env:", BOT_TOKEN, SUB_TOPIC, PUB_TOPIC, USERNAME, PASSWORD, ADMIN_CHAT_ID, MQTTHOST, MQTTPORT)
+devices = {i["name"] : i for i in env["device"]}
 
-def on_connect(client, userdata, flags, rc):
-    """
-    一旦连接成功, 回调此方法
-    rc的值表示成功与否：
-        0:连接成功
-        1:连接被拒绝-协议版本不正确
-        2:连接被拒绝-客户端标识符无效
-        3:连接被拒绝-服务器不可用
-        4:连接被拒绝-用户名或密码不正确
-        5:连接被拒绝-未经授权
-        6-255:当前未使用。
-    """
-    rc_status = ["连接成功", "协议版本不正确", "客户端标识符无效", "服务器不可用", "用户名或密码不正确", "未经授权"]
-    print("connect：", rc_status[rc])
-    client.subscribe(SUB_TOPIC)
+current_device = env["device"][0]
+
+bot = telebot.TeleBot(env["ir_bot_token"])
+
+# print("env:", BOT_TOKEN, SUB_TOPIC, PUB_TOPIC, USERNAME, PASSWORD, env["ir_admin_chat_id"], MQTTHOST, MQTTPORT)
+
 
 
 
@@ -72,22 +55,40 @@ def on_message(client, userdata, msg):
                 rt += f"  {str(it)}\n"
     bot.send_message(rsp["chat_id"], rt)
 
-def mqtt_connect():
+def mqtt_connect(mqtthost, mqttport, username, password, sub_topic, pub_topic):
+    print(f"mqtt_connect:\n mqtthost {mqtthost}\n mqttport {mqttport}\n username {username}\n password {password}\n sub_topic {sub_topic}\n pub_topic {pub_topic}")
     """连接MQTT服务器"""
     mqttClient = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, str(uuid.uuid4()))
+    def on_connect(client, userdata, flags, rc):
+        """
+        一旦连接成功, 回调此方法
+        rc的值表示成功与否：
+            0:连接成功
+            1:连接被拒绝-协议版本不正确
+            2:连接被拒绝-客户端标识符无效
+            3:连接被拒绝-服务器不可用
+            4:连接被拒绝-用户名或密码不正确
+            5:连接被拒绝-未经授权
+            6-255:当前未使用。
+        """
+        rc_status = ["连接成功", "协议版本不正确", "客户端标识符无效", "服务器不可用", "用户名或密码不正确", "未经授权"]
+        print("connect：", rc_status[rc])
+        client.subscribe(sub_topic)  # 订阅消息
     mqttClient.on_connect = on_connect  # 返回连接状态的回调函数
     mqttClient.on_message = on_message 
-    mqttClient.username_pw_set(USERNAME, PASSWORD)
-    mqttClient.connect(MQTTHOST, MQTTPORT, 60)
+    mqttClient.username_pw_set(username, password)
+    mqttClient.connect(mqtthost, mqttport, 60)
     mqttClient.loop_start()  # 启用线程连接
 
     return mqttClient
 
 
-mqttClient = mqtt_connect()
+mqttClients = {}
 
+for key, val in devices.items():
+    mqttClients[key] = mqtt_connect(val["ir_mqtthost"], val["ir_mqttport"], val["ir_username"], val["ir_password"], val["ir_sub_topic"], val["ir_pub_topic"])
 
-user = {ADMIN_CHAT_ID}
+user = {env["ir_admin_chat_id"]}
 
 
 
@@ -100,7 +101,7 @@ def Permissions(func):
             return 
         data = func(*args, **kwargs)  # 调用被装饰的函数，并传递所有参数
         if data:
-            mqttClient.publish(PUB_TOPIC, str(data), 0)
+            mqttClients[current_device["name"]].publish(current_device["ir_pub_topic"], str(data), 0)
             bot.reply_to(message, f"{str(data)} is transmitted")
     return wrapper
 
@@ -242,10 +243,22 @@ def bot_tlist(message):
         return 
     return data
 
+@bot.message_handler(commands=['device'])
+@Permissions
+def bot_device(message):
+    args = message.text.split(' ')[1:]
+    if 0<len(args) and args[0] and args[0] in devices:
+        global current_device
+        current_device = devices[args[0]]
+        bot.reply_to(message, f"device switch to {args[0]}")    
+    devices_msg = "\n".join([("+ " if k == current_device["name"] else "- ")+k for k in devices])
+    bot.reply_to(message, f"device list:\n{devices_msg}")    
+    return 
+
 @bot.message_handler(commands=['adduser'])
 def bot_adduser(message):
     print(message)
-    if message.chat.id != ADMIN_CHAT_ID:
+    if message.chat.id != env["ir_admin_chat_id"]:
         bot.reply_to(message, f"only administrators can operate")
         return 
     for i in message.text.split(' ')[1:]:
@@ -256,7 +269,7 @@ def bot_adduser(message):
 @bot.message_handler(commands=['auth'])
 def bot_request(message):
     print(message)
-    bot.send_message(ADMIN_CHAT_ID, f"{message.from_user.first_name} {message.from_user.last_name} request chat id: {message.chat.id}")
+    bot.send_message(env["ir_admin_chat_id"], f"{message.from_user.first_name} {message.from_user.last_name} request chat id: {message.chat.id}")
     bot.reply_to(message, f"your application has been submitted to the administrator")
 
 
@@ -316,6 +329,10 @@ help="""
 
 `/auth`  
 - 向管理员认证，申请使用指令
+
+`/device [name]`
+- 展示设备列表
+- `name`  指定切换设备名称
 """
 
 @bot.message_handler(commands=['help'])
@@ -337,6 +354,7 @@ taskidlist - 当前所有任务id
 task - 获取编号为id的任务信息
 cmdlist - 当前学习的命令
 adduser - 添加可使用机器人指令的用户
+device - 展示设备列表
 auth - 向管理员认证，申请使用指令
 start - 开始
 help - 帮助
