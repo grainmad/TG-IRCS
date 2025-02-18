@@ -7,6 +7,7 @@
 - 终止定时任务
 - 可多用户使用Telegram机器人指令，需管理员认证
 - 定期检测断网重连，更新网络时间
+- 机器人支持多设备控制
 
 # 机器人指令
 `/exec name [start] [freq] [remain]`
@@ -73,17 +74,19 @@
 
 **配置环境变量**
 ```shell
-cp .env.template .env
+cp env.json.template env.json
 ```
-修改`.env`内配置  
-- `IR_BOT_TOKEN` TG找机器人[@BotFather](https://t.me/BotFather)创建机器人，然后生成。
-- `IR_MQTTHOST` MQTT服务器
-- `IR_MQTTPORT` MQTT服务器端口
-- `IR_SUB_TOPIC` MQTT消息发布主题，对应单片机上的订阅主题
-- `IR_PUB_TOPIC` MQTT消息订阅主题，对应单片机上的发布主题
-- `IR_USERNAME` MQTT用户名
-- `IR_PASSWORD` MQTT密码
-- `IR_ADMIN_CHAT` 管理员TG用户的id，你的id可通过机器人[@userinfobot](https://t.me/userinfobot)获取。或者先不填，在本机器人运行后输入任意指令可在控制台找到。
+修改`env.json`内配置  
+- `ir_bot_token` TG找机器人[@BotFather](https://t.me/BotFather)创建机器人，然后生成。
+- `ir_admin_chat_id` 管理员TG用户的id，你的id可通过机器人[@userinfobot](https://t.me/userinfobot)获取。或者先不填，在本机器人运行后输入任意指令可在控制台找到。  
+- 配置设备列表参数
+    - `name` 设备名称
+    - `ir_mqtthost` MQTT服务器
+    - `ir_mqttport` MQTT服务器端口
+    - `ir_sub_topic` MQTT消息发布主题，对应单片机上的订阅主题
+    - `ir_pub_topic` MQTT消息订阅主题，对应单片机上的发布主题
+    - `ir_username` MQTT用户名
+    - `ir_password` MQTT密码
 
 
 **下载依赖**
