@@ -232,14 +232,22 @@ void solve_msg(String Msg) {
     msg_pub_print(200, "get cmdlist ok");
   }
 
-  if (cmd == "terminate") {
-    int id = doc["taskid"];
-    if (0 <= id && id < TASK_N && tasklist[id].remain>0) {
-      tasklist[id].remain = 0;
-      msg_pub_print(200, "terminate task ok");
-    } else {
-      msg_pub_print(400, "illegal task id");
+  if (cmd == "terminate") { // 支持非数字字符分割的taskid 2,4 1
+    String cmds = doc["taskid"];
+    int cmds_len = cmds.length();
+    for (int i=0, j; (j=i)<cmds_len; i=j) {
+      while (j<cmds_len && !('0' <= cmds.charAt(j) && cmds.charAt(j) <= '9') ) j++;
+      i = j;
+      int id = 0;
+      while (j<cmds_len && ('0' <= cmds.charAt(j) && cmds.charAt(j) <= '9') ) id = id*10+cmds.charAt(j++)-'0';
+      if (i<j && 0 <= id && id < TASK_N && tasklist[id].remain>0) {
+        tasklist[id].remain = 0;
+        msg_pub_print(200, "terminate task "+cmds.substring(i,j)+" ok");
+      } else {
+        msg_pub_print(400, "illegal task id");
+      }  
     }
+    
   }
 
   if (cmd == "exec") {                            // exec cmd

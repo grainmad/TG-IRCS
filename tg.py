@@ -12,12 +12,35 @@ import time
 
 import json
 
-with open("env.json", "r") as f:
-    env = json.load(f)
+def save_dict(name, dc):
+    with open(name, 'w') as f:
+        json.dump(dc, f, indent=4)
 
+def load_dict(name):
+    try:
+        with open(name, "r") as f:
+            dc = json.load(f)
+        return dc
+    except FileNotFoundError:
+        print(f"文件 '{name}' 不存在。")
+        return {}
+
+env = load_dict("env.json")
 devices = {i["name"] : i for i in env["device"]}
 
-current_device = env["device"][0]
+db = load_dict("db.json")
+
+
+if "device" not in db:
+    db["device"] = env["device"][0]
+
+if"user" not in db:
+    db["user"] = [env["ir_admin_chat_id"]]
+
+if"preference" not in db:
+    db["preference"] = {}
+
+save_dict("db.json", db)
 
 bot = telebot.TeleBot(env["ir_bot_token"])
 
@@ -88,27 +111,25 @@ mqttClients = {}
 for key, val in devices.items():
     mqttClients[key] = mqtt_connect(val["ir_mqtthost"], val["ir_mqttport"], val["ir_username"], val["ir_password"], val["ir_sub_topic"], val["ir_pub_topic"])
 
-user = {env["ir_admin_chat_id"]}
-
 
 
 def Permissions(func):
     def wrapper(*args, **kwargs):
         message = args[0]
         print(message)
-        if message.chat.id not in user:
+        if message.chat.id not in db["user"]:
             bot.reply_to(message, f"authentication required")
             return 
         data = func(*args, **kwargs)  # 调用被装饰的函数，并传递所有参数
         if data:
-            mqttClients[current_device["name"]].publish(current_device["ir_pub_topic"], str(data), 0)
+            mqttClients[db["device"]["name"]].publish(db["device"]["ir_pub_topic"], str(data), 0)
             bot.reply_to(message, f"{str(data)} is transmitted")
     return wrapper
 
 @bot.message_handler(commands=['copy'])
 @Permissions
 def bot_copy(message):
-    args = message.text.split(' ')[1:]
+    args = [i for i in message.text.split(' ')[1:] if i]
     data = {"cmd":"copy", "name":"", "old":"", "chat_id":message.chat.id}
 
     if 0<len(args):
@@ -128,10 +149,7 @@ def bot_copy(message):
     return data
     
 
-@bot.message_handler(commands=['exec'])
-@Permissions
-def bot_exec(message):
-    args = message.text.split(' ')[1:]
+def exec(message, args):
     data = {"cmd":"exec", "name":"", "start":0, "freq":0, "remain":1,"chat_id":message.chat.id}
     
     if 0<len(args) and args[0] : 
@@ -196,18 +214,16 @@ def bot_exec(message):
         data["remain"] = parse_remain(args[3])
     
     return data
+
+@bot.message_handler(commands=['exec'])
+@Permissions
+def bot_exec(message):
+    return exec(message, [i for i in message.text.split(' ')[1:] if i])
     
 @bot.message_handler(commands=['terminate'])
 @Permissions
 def bot_terminate(message):
-    args = message.text.split(' ')[1:]
-    data = {"cmd":"terminate", "taskid":-1, "chat_id":message.chat.id}
-    
-    if 0<len(args) and args[0] : 
-        data["taskid"] = args[0]
-    else:
-        bot.reply_to(message, "not set taskid", parse_mode="Markdown")
-        return 
+    data = {"cmd":"terminate", "taskid":",".join(message.text.split(' ')[1:]), "chat_id":message.chat.id}
     return data    
 
 
@@ -235,7 +251,7 @@ def bot_tlist(message):
 @Permissions
 def bot_tlist(message):
     data = {"cmd":"task", "id":-1, "chat_id":message.chat.id}
-    args = message.text.split(' ')[1:]
+    args = [i for i in message.text.split(' ')[1:] if i]
     if 0<len(args) and args[0] : 
         data["id"] = args[0]
     else:
@@ -243,15 +259,53 @@ def bot_tlist(message):
         return 
     return data
 
+
+
+@bot.message_handler(commands=['preference'])
+@Permissions
+def bot_preference(message):
+
+    lines = [i for i in message.text.split('\n') if i]
+    
+    # 添加删除别名
+    adding = ""
+    for line in lines[1:]: 
+        if line[0] == "+": #不存在空行
+            adding = line[1:]
+            db["preference"][adding] = []
+            continue
+        if line[0] == "-":
+            adding = ""
+            if line[1:] in db["preference"]: del db["preference"][line[1:]]
+            continue
+        if adding:
+            db["preference"][adding].append(line)
+    save_dict("db.json", db)
+
+    # 返回别名列表
+    preference_msg = "\n".join([ f"{k}\n    {"\n    ".join(v)}" for k,v in db["preference"].items()])
+    bot.reply_to(message, f"alias list:\n{preference_msg}")
+
+    # 执行别名
+    args = [i for i in lines[0].split(" ")[1:] if i]
+    for alias in args:
+        bot.send_message(message.chat.id, f"executing {alias} ...")
+        if alias in db["preference"]:
+            for cmd in db["preference"][alias]:
+                data = exec(message, [i for i in cmd.split(" ") if i])
+                if data:
+                    mqttClients[db["device"]["name"]].publish(db["device"]["ir_pub_topic"], str(data), 0)
+                    bot.send_message(message.chat.id, f"{str(data)} is transmitted")
+
 @bot.message_handler(commands=['device'])
 @Permissions
 def bot_device(message):
-    args = message.text.split(' ')[1:]
-    if 0<len(args) and args[0] and args[0] in devices:
-        global current_device
-        current_device = devices[args[0]]
+    args = [i for i in message.text.split(' ')[1:] if i]
+    if 0<len(args) and args[0] in devices:
+        db["device"] = devices[args[0]]
         bot.reply_to(message, f"device switch to {args[0]}")    
-    devices_msg = "\n".join([("+ " if k == current_device["name"] else "- ")+k for k in devices])
+        save_dict("db.json", db)
+    devices_msg = "\n".join([("+ " if k == db["device"]["name"] else "- ")+k for k in devices])
     bot.reply_to(message, f"device list:\n{devices_msg}")    
     return 
 
@@ -261,9 +315,11 @@ def bot_adduser(message):
     if message.chat.id != env["ir_admin_chat_id"]:
         bot.reply_to(message, f"only administrators can operate")
         return 
-    for i in message.text.split(' ')[1:]:
-        user.add(int(i))
-    bot.reply_to(message, f"user list:\n {str(user)}")
+    candicates = [i for i in message.text.split(' ')[1:] if i]
+    for i in candicates:
+        if i.isdecimal() and int(i) not in db["user"]: db["user"].append(int(i))
+        save_dict("db.json", db)
+    bot.reply_to(message, f"user list:\n {str(db["user"])}")
 
 
 @bot.message_handler(commands=['auth'])
@@ -279,6 +335,31 @@ def bot_start(message):
 
 
 help="""
+
+
+# 机器人指令
+
+## 学习红外指令  
+执行`copy`命令后，单片机将亮灯一段时间，这段时间内存储收到的最后一条红外指令。
+
+`/copy name [old]`
+- `name`  
+    - 学习红外指令的名称，非空，且只能包含数字、字母、下划线、减号
+    - 若`old`未指定
+        - `name`已存在则更新`name`
+        - `name`已存在则从剩余容量中分配，容量已满则轮转覆盖。
+- `old`  
+    - 替换旧命令，单片机校验旧命令不存在则执行失败  
+    - 默认 `""`
+
+## 查看学习到的红外指令  
+可以看到保存的指令名称
+
+`/cmdlist`  
+
+## 执行红外指令
+可定时定期定量执行多条红外命令
+
 `/exec name [start] [freq] [remain]`
 - `name`  
     - 执行命令，单片机校验不存在则执行失败
@@ -299,40 +380,67 @@ help="""
     - 剩余执行次数  
     - 默认 `1`
     
-`/terminate id`  
-- 终止编号为id的任务
 
-`/copy name [old]`
-- `name`  
-    - 学习红外命令的名称，非空，且只能包含数字、字母、下划线、减号
-    - 若`old`未指定
-        - `name`已存在则更新`name`
-        - `name`已存在则从剩余容量中分配，容量已满（默认 8）则轮转覆盖。
-- `old`  
-    - 替换旧命令，单片机校验旧命令不存在则执行失败  
-    - 默认 `""`
+## 任务队列信息
+对于延期执行的命令，将在队列中存储
 
 `/tasklist`  
-- 当前所有任务信息
+- 当前所有任务信息，包括任务id，下次执行的时间，执行周期，剩余执行次数，当剩余执行次数为0时结束任务。
 
-`/taskidlist`  
-- 当前所有任务id
+## 终止任务
+可通过任务的编号终止任务队列中的某些任务
 
-`/task id`  
-- 获取编号为id的任务信息
+`/terminate id [...]`  
+- 终止数字编号为id的任务，支持多个id，以任意非数字字符分割
 
-`/cmdlist`  
-- 当前学习的命令
+## 管理和执行别名
+有时需要多条命令才能达到想要的效果，命令又多又长。可以用较短的别名来组织管理。
 
-`/adduser`  
-- 添加可使用机器人指令的用户
+`/preference`
+- 偏好设置，可管理和执行别名，通过别名可以批量执行exec类型指令。
+  ``` text
+  /preference [name]
+  [+addname]
+  cmd
+  ...
+  [-delname]
+  ```
+    - `name` 执行别名，多个以空格分割，必须与`/preference`同一行
+    - `addname` 添加别名，必须以`+`开头标识，接下来的行将识别为`exec`命令的参数。
+    - `delname` 删除别名，必须以`-`开头标识
+    - 支持多别名删除与添加
+- 使用示例：
+  ``` text
+  /preference alias1
+  +alias1
+  cmd1
+  cmd2
+  -alias2
+  ```
+  添加别名`alias1`，`alias1`包含了`cmd1`和`cmd2`两条指令。  
+  删除别名`alias2`，如果存在的话。  
+  返回当前的别名列表。  
+  最后执行别名alias1的命令序列。
 
-`/auth`  
-- 向管理员认证，申请使用指令
+## 设备列表
+有多个单片机设备，可以展示这些设备，或者切换到某台设备。被选中的设备名称会以`+`开头标识。
 
 `/device [name]`
 - 展示设备列表
 - `name`  指定切换设备名称
+
+## 添加新用户
+其他用户可能想要使用机器人，只需提供该用户的id即可为用户授权。
+
+`/adduser [id]`  
+- 添加用户的数字id，以标识其可使用机器人指令，多个id用非数字字符分割
+
+## 申请使用机器人
+其他用户执行此指令，管理员可为其授权。
+
+`/auth`  
+- 向管理员认证，申请使用指令，管理员会收到用户数字id
+
 """
 
 @bot.message_handler(commands=['help'])
@@ -346,16 +454,15 @@ bot.infinity_polling()
 """
 bootfather Edit Commands
 
-exec - 执行红外命令
-terminate - 终止任务
-copy - 学习红外命令
-tasklist - 当前所有任务信息
-taskidlist - 当前所有任务id
-task - 获取编号为id的任务信息
-cmdlist - 当前学习的命令
-adduser - 添加可使用机器人指令的用户
-device - 展示设备列表
-auth - 向管理员认证，申请使用指令
 start - 开始
 help - 帮助
+copy - 学习红外命令
+cmdlist - 学习到的命令
+exec - 执行红外命令
+tasklist - 当前任务队列信息
+terminate - 终止任务
+preference - 别名管理或执行
+device - 展示或切换设备列表
+adduser - 添加可使用机器人指令的用户
+auth - 向管理员认证，申请使用指令
 """
