@@ -309,16 +309,32 @@ def bot_device(message):
     bot.reply_to(message, f"device list:\n{devices_msg}")    
     return 
 
-@bot.message_handler(commands=['adduser'])
-def bot_adduser(message):
+@bot.message_handler(commands=['usermod'])
+def bot_usermod(message):
     print(message)
     if message.chat.id != env["ir_admin_chat_id"]:
         bot.reply_to(message, f"only administrators can operate")
         return 
-    candicates = [i for i in message.text.split(' ')[1:] if i]
-    for i in candicates:
-        if i.isdecimal() and int(i) not in db["user"]: db["user"].append(int(i))
-        save_dict("db.json", db)
+    candicates = " ".join(message.text.split(' ')[1:])
+    i = 0
+    while i < len(candicates):
+        while i<len(candicates) and not candicates[i].isdecimal():
+            i += 1
+        if i == len(candicates): break
+        # 找到了第一个数字
+        uid, sub = 0, 0
+        if i>0 and candicates[i-1] == '-':
+            sub = 1
+        
+        while i < len(candicates) and candicates[i].isdecimal():
+            uid = uid*10 + int(candicates[i])
+            i += 1
+        if sub:
+            if uid in db["user"] and uid != env["ir_admin_chat_id"]: db["user"].remove(uid) # 非管理员用户
+        else:
+            if uid not in db["user"]: db["user"].append(uid)
+
+    save_dict("db.json", db)
     bot.reply_to(message, f"user list:\n {str(db["user"])}")
 
 
@@ -430,10 +446,12 @@ help="""
 - `name`  指定切换设备名称
 
 ## 添加新用户
-其他用户可能想要使用机器人，只需提供该用户的id即可为用户授权。
+其他用户可能想要使用机器人，只需提供该用户的id即可为用户授权，管理员可能想要踢出某些用户。
 
-`/adduser [id]`  
-- 添加用户的数字id，以标识其可使用机器人指令，多个id用非数字字符分割
+`/usermod [[+]id] [-id]`  
+- 添加或删除用户的数字id，多个id用非数字字符分割
+- 纯数字或`+`开头为添加用户
+- `-`开头为删除用户
 
 ## 申请使用机器人
 其他用户执行此指令，管理员可为其授权。
@@ -463,6 +481,6 @@ tasklist - 当前任务队列信息
 terminate - 终止任务
 preference - 别名管理或执行
 device - 展示或切换设备列表
-adduser - 添加可使用机器人指令的用户
+usermod - 添加删除的用户
 auth - 向管理员认证，申请使用指令
 """
