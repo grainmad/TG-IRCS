@@ -115,8 +115,10 @@ for key, val in devices.items():
 
 def Permissions(func):
     def wrapper(*args, **kwargs):
+        # 只保留ascii可见字符和空格换行
+        args[0].text =  ''.join(filter(lambda char: 32 <= ord(char) <= 126 or char == '\n', args[0].text))
+        print(args[0])
         message = args[0]
-        print(message)
         if message.chat.id not in db["user"]:
             bot.reply_to(message, f"authentication required")
             return 
@@ -264,12 +266,11 @@ def bot_tlist(message):
 @bot.message_handler(commands=['preference'])
 @Permissions
 def bot_preference(message):
-
     lines = [i for i in message.text.split('\n') if i]
-    
     # 添加删除别名
     adding = ""
     for line in lines[1:]: 
+        line = line.strip()
         if line[0] == "+": #不存在空行
             adding = line[1:]
             db["preference"][adding] = []
@@ -310,8 +311,8 @@ def bot_device(message):
     return 
 
 @bot.message_handler(commands=['usermod'])
+@Permissions
 def bot_usermod(message):
-    print(message)
     if message.chat.id != env["ir_admin_chat_id"]:
         bot.reply_to(message, f"only administrators can operate")
         return 
