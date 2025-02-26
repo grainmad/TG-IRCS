@@ -57,7 +57,8 @@ IRsend irsend(kIrLed);  // 将kIrLed设置发送信息
 // 持久化红外指令数组到闪存文件系统
 String copy_base_filename = "/copy_signal";
 #define COPY_N 16
-uint16_t copy_signal[COPY_N][256];
+#define MAX_SIGNAL_LEN 512
+uint16_t copy_signal[COPY_N][MAX_SIGNAL_LEN];
 uint16_t copy_length[COPY_N] = {0};
 String copy_name[COPY_N];
 int copy_cover = 0;
