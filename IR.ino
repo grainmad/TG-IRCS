@@ -160,10 +160,11 @@ uint8_t connect_mqtt(){
 }
 
 // 定时函数执行耗时操作会崩溃，主循环loop中检测到标记变量则执行耗时操作
-Ticker wf, mt;
-int tag_wifi=0, tag_mqtt=0;
+Ticker wf, mt, lp;
+int tag_wifi=0, tag_mqtt=0, tag_loop = 0;
 void itv_wifi() { tag_wifi++; }
 void itv_mqtt() { tag_mqtt++; }
+void itv_loop() { tag_loop++; }
 
 // must after rdoc.clear()
 void msg_pub_print(int code, const String& msg) {
@@ -436,6 +437,8 @@ void setup() {
   connect_mqtt();  // 连接MQTT
   wf.attach(30, itv_wifi);
   mt.attach(5, itv_mqtt);
+  lp.attach(0.5, itv_loop);
+
 
   
   // ntp
@@ -443,7 +446,6 @@ void setup() {
   timeClient.update();
   Serial.println(timeClient.getFormattedTime() + " " + timeClient.getEpochTime());
 }
-
 
 void loop() {
   // task slover
@@ -514,10 +516,7 @@ void loop() {
   // check mqtt
   if (tag_mqtt>=1) {
     // Serial.print("itv check mqtt: ");
-    if(WiFi.status()==WL_CONNECTED && pc.connected()){ 
-        // Serial.println("mqtt connected");
-        pc.loop();                                      // 发送心跳信息
-    }else{
+    if(!(WiFi.status()==WL_CONNECTED && pc.connected())){
       LED_flash(1); // 闪烁1次 mqtt 断联
       Serial.println("mqtt disconnected, trying to reconnect...");
       connect_mqtt();                                  // 如果和MQTT服务器断开连接,那么重连
@@ -525,6 +524,10 @@ void loop() {
     tag_mqtt = 0;
     timeClient.update();
     // Serial.println(timeClient.getFormattedTime()+" "+timeClient.getEpochTime());
+  }
+  if (tag_loop>=1) {
+    pc.loop();
+    tag_loop = 0;
   }
   if (digitalRead(flashPin) == LOW) {
     Serial.println("Flash button pressed!");

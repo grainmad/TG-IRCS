@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>红外控制面板</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 20px;
+        }
+        .blk {
+            display: block;
+            margin: 10px 0;
+        }
+        .hidden {
+            display: none;
+        }
+        .dly {
+            width: 40px;
+            margin-right: 5px;
+        }
+        ul {
+            list-style-type: none;  /* 去掉默认的列表项标记 */
+            padding: 0;  /* 去掉默认的内边距 */
+        }
+        li {
+            display: flex;  /* 使用 flexbox 布局 */
+            justify-content: space-between;  /* 左右两边分布 */
+            align-items: center;  /* 垂直居中对齐 */
+            padding: 10px;
+            border: 1px solid #ccc;
+            margin-bottom: 5px;
+            word-wrap: break-word;  /* 让文字换行 */
+        }
+        .text {
+            flex: 1;  /* 文字部分占据可用空间 */
+            margin-right: 10px;  /* 文字和按钮之间的间距 */
+        }
+        .buttons {
+            display: flex;  /* 使按钮横向排列 */
+            gap: 5px;  /* 按钮之间的间距 */
+        }
+    </style>
+</head>
+<body>
+    <h1>websocket消息</h1>
+    <div id="messages"></div>
+    <hr>
+
+    <h1>执行红外指令</h1>
+    <input class="blk" type="text" id="execname" placeholder="执行命令">
+    
+    <label>
+        <input type="radio" name="option" value="datetime" onclick="toggleInputs()" checked> 执行日期
+    </label>
+    <label>
+        <input type="radio" name="option" value="delaytime" onclick="toggleInputs()"> 延时时间
+    </label>
+
+    <!-- Date input for option A -->
+    <div id="dateInput" class="blk">
+        <label for="date">选择执行时间:</label>
+        <input type="datetime-local" id="selectDateTime">
+    </div>
+
+    <!-- Number input for option B -->
+    <div id="numberInput" class="blk hidden">
+        <label for="number">选择延时时间:</label>
+        <input type="number" id="delayd" min="0" class="dly"><span>天</span>
+        <input type="number" id="delayh" min="0" class="dly"><span>时</span>
+        <input type="number" id="delaym" min="0" class="dly"><span>分</span>
+        <input type="number" id="delays" min="0" class="dly"><span>秒</span>
+        
+    </div>
+
+    <div id="numberInput2" class="blk">
+        <label for="number">执行周期:</label>
+        <input type="number" id="freqd" min="0" class="dly"><span>天</span>
+        <input type="number" id="freqh" min="0" class="dly"><span>时</span>
+        <input type="number" id="freqm" min="0" class="dly"><span>分</span>
+        <input type="number" id="freqs" min="0" class="dly"><span>秒</span>
+    </div>
+    <div id="numberInput3" class="blk">
+        <label for="number">剩余执行次数:</label> <input type="number" id="remain" min="1" value="1" style="width: 40px; margin-right: 5px;"><span>次</span>
+    </div>
+    <button class="blk" onclick="execstart()">执行命令</button>
+    <hr>
+
+    <h1>任务队列</h1>
+    <div>
+        <button class="blk" onclick="tasklist()">刷新</button>
+        <ul id="taskqueue">
+            <!-- <li>
+                <div class="text">This is a list item with some long text that will wrap around as needed to fit within the available space.</div>
+                <div class="buttons">
+                    <button>终止任务</button>
+                </div>
+            </li>
+            <li>
+                <div class="text">Another item, this time with shorter text.</div>
+                <div class="buttons">
+                    <button>终止任务</button>
+                </div>
+            </li>
+            <li>
+                <div class="text">Here is a third item with a medium amount of text.</div>
+                <div class="buttons">
+                    <button>终止任务</button>
+                </div>
+            </li> -->
+        </ul>
+    </div>
+    <hr>
+
+    <h1>复制红外命令</h1>
+    <input class="blk" type="text" id="copyname" placeholder="新命令名称">
+    <input class="blk" type="text" id="oldname" placeholder="替换的旧命令名称（可选）">
+    <button class="blk" onclick="copystart()">开始复制</button>
+    <hr>
+    <h1>红外命令</h1>
+    <div>
+        <button class="blk" onclick="cmdlist()">刷新</button>
+        <ul id="ircmd">
+            <!-- <li>
+                <div class="text">This is a list item with some long text that will wrap around as needed to fit within the available space.</div>
+                
+            </li> -->
+        </ul>
+    </div>
+    <hr>
+    
+    <script>
+        function copystart() {
+            var copyname = document.getElementById('copyname').value;
+            var oldname = document.getElementById('oldname').value;
+            const msg = {cmd: "copy", name: copyname, old: oldname, chat_id: 0}
+            sendMessage(JSON.stringify(msg))
+            cmdlist();
+        }
+        function execstart() {
+            var execname = document.getElementById('execname').value;
+            const selectedOption = document.querySelector('input[name="option"]:checked').value;
+            var delay;
+            if (selectedOption === 'datetime') {
+                delay = document.getElementById('selectDateTime').value;
+                if (delay != "") {
+                    delay += ":00"
+                    delay = Math.floor(new Date(delay).getTime()/1000);
+                }
+            } else if (selectedOption === 'delaytime') {
+                delay = parseInt(Math.floor(new Date().getTime()/1000));
+                
+                
+                delay += parseInt(document.getElementById('delayd').value*86400) || 0;
+                delay += parseInt(document.getElementById('delayh').value*3600) || 0;
+                delay += parseInt(document.getElementById('delaym').value*60) || 0;
+                delay += parseInt(document.getElementById('delays').value) || 0;
+                
+            }
+            var fq = 0;
+            fq += parseInt(document.getElementById('freqd').value*86400) || 0;
+            fq += parseInt(document.getElementById('freqh').value*3600) || 0;
+            fq += parseInt(document.getElementById('freqm').value*60) || 0;
+            fq += parseInt(document.getElementById('freqs').value) || 0;
+
+            var rm = parseInt(document.getElementById('remain').value) || 0;
+            
+            const msg = {'cmd': 'exec', 'name': execname, 'start': delay, 'freq': fq, 'remain': rm, 'chat_id': 0} 
+            sendMessage(JSON.stringify(msg))
+            tasklist();
+        }
+        function tasklist() {
+            const msg = {'cmd': 'tasklist', 'chat_id': 0} 
+            sendMessage(JSON.stringify(msg))
+        }
+        function cmdlist() {
+            const msg = {'cmd': 'cmdlist', 'chat_id': 0} 
+            sendMessage(JSON.stringify(msg))
+        }
+        function terminate(id) {
+            console.log("terminate "+id);
+            const msg = {'cmd': 'terminate', 'taskid':id, 'chat_id': 0} 
+            sendMessage(JSON.stringify(msg))
+            tasklist();
+        }
+        function toggleInputs() {
+            const dateInput = document.getElementById('dateInput');
+            const numberInput = document.getElementById('numberInput');
+            const selectedOption = document.querySelector('input[name="option"]:checked').value;
+
+            // Hide both inputs initially
+            dateInput.classList.add('hidden');
+            numberInput.classList.add('hidden');
+
+            // Show the corresponding input based on selection
+            if (selectedOption === 'datetime') {
+                dateInput.classList.remove('hidden');
+            } else if (selectedOption === 'delaytime') {
+                numberInput.classList.remove('hidden');
+            }
+        }
+        function formatTimestamp(unixTimestamp) {
+            // 将 Unix 时间戳转换为 JavaScript 的 Date 对象
+            const date = new Date(unixTimestamp * 1000);
+
+            // 获取年、月、日、时、分、秒
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0'); // 月份从 0 开始，补零
+            const day = String(date.getDate()).padStart(2, '0'); // 日期补零
+            const hours = String(date.getHours()).padStart(2, '0'); // 小时补零
+            const minutes = String(date.getMinutes()).padStart(2, '0'); // 分钟补零
+            const seconds = String(date.getSeconds()).padStart(2, '0'); // 秒补零
+
+            // 格式化输出
+            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        }
+        function formatSeconds(seconds) {
+            const days = Math.floor(seconds / (3600 * 24)); // 计算天数
+            seconds %= 3600 * 24; // 剩余秒数
+
+            const hours = Math.floor(seconds / 3600); // 计算小时数
+            seconds %= 3600; // 剩余秒数
+
+            const minutes = Math.floor(seconds / 60); // 计算分钟数
+            seconds %= 60; // 剩余秒数
+
+            // 拼接结果
+            let result = '';
+            if (days > 0) result += `${days}d`;
+            if (hours > 0) result += `${hours}h`;
+            if (minutes > 0) result += `${minutes}m`;
+            if (seconds > 0) result += `${seconds}s`;
+
+            return result || '0s'; // 如果结果为 0，返回 '0s'
+        }
+        function addcmd(cmd) {
+            var execname = document.getElementById('execname').value;
+            document.getElementById('execname').value += (execname != "" && execname.slice(-1) != "," ? ",":"")+cmd
+
+        }
+        function addmessage(message) {
+            let messages = document.getElementById('messages');
+            // 获取'messages'元素中的所有p标签
+            let pTags = messages.querySelectorAll('p');
+
+            // 如果p标签的数量大于或等于5个
+            if (pTags.length >= 5) {
+            // 删除第一个p标签
+            pTags[0].remove();
+            }
+            document.getElementById('messages').innerHTML += message;
+        }
+        const socket = new WebSocket('ws://192.168.4.1:81/');
+        socket.onmessage = function(event) {
+            console.log('Message from server: ' + event.data);
+            addmessage("<p>Server: " + event.data + "</p>")
+            let data = JSON.parse(event.data)
+            // cmdlist {"cmds":["109-on","109-off","hr-on","hr-off","lon","loff","hron","hroff"],"chat_id":0,"code":200,"message":"get cmdlist ok"}
+            // tasklist {"tasks":[{"remain":1,"start":1740905400,"freq":0,"cmd":"lon","xid":4,"taskid":0}],"chat_id":0,"code":200,"message":"get tasklist ok"}
+            if (data.message == "get cmdlist ok") {
+                const cmdList = document.getElementById("ircmd");
+                // 清空现有的列表项
+                cmdList.innerHTML = "";
+                data.cmds.forEach(cmd => {
+                    const li = document.createElement("li");
+                    li.innerHTML = `<div class="text">${cmd}</div><div class="buttons"><button onclick="addcmd('${cmd}')">添加指令</button>`;
+                    cmdList.appendChild(li);
+                });
+            }
+            if (data.message == "get tasklist ok") {
+                const taskList = document.getElementById("taskqueue")
+                // 清空现有的列表项
+                taskList.innerHTML = "";
+                data.tasks.forEach(task => {
+                    const li = document.createElement("li");
+                    li.innerHTML = `<div class="text">任务号：${task.taskid}<br>指令：${task.cmd}<br>指令编号：${task.xid}<br>执行时间：${formatTimestamp(task.start)}<br>周期：${formatSeconds(task.freq)}<br>剩余次数：${task.remain}<br></div><div class="buttons"><button onclick="terminate(${task.taskid})">终止任务</button></div>`;
+                    taskList.appendChild(li);
+                });
+            }
+            if (data.message.includes("success")) {
+                if (data.message.includes("task")) tasklist();
+                if (data.message.startsWith("copy")) cmdlist();
+            }
+            
+        };
+        socket.onopen = function() {
+            console.log('WebSocket is connected.');
+            addmessage("<p>Connected to WebSocket server.</p>")
+        };
+        socket.onerror = function(error) {
+            console.error('WebSocket Error: ', error);
+        };
+        socket.onclose = function() {
+            console.log('WebSocket connection closed.');
+            addmessage("<p>Disconnected from WebSocket server.</p>")
+        };
+        function sendMessage(message) {
+            if (message && socket.readyState === WebSocket.OPEN) {
+                socket.send(message);
+                addmessage("<p>You: " + message + "</p>")
+            } else {
+                alert('WebSocket is not open.');
+            }
+        }
+        window.onload = function() {
+            tasklist();
+            cmdlist();
+        };
+
+    </script>
+</body>
+</html>
