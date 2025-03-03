@@ -42,6 +42,18 @@
             display: flex;  /* 使按钮横向排列 */
             gap: 5px;  /* 按钮之间的间距 */
         }
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr); /* 每行两列 */
+            gap: 10px; /* 列之间的间距 */
+            list-style: none;
+            padding: 0;
+        }
+
+        .grid-container li {
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
     </style>
 </head>
 <body>
@@ -50,7 +62,19 @@
     <hr>
 
     <h1>执行红外指令</h1>
-    <input class="blk" type="text" id="execname" placeholder="执行命令">
+    <div>
+        <button class="blk" onclick="cmdlist()">刷新列表</button>
+        <ul id="ircmd" class="grid-container">
+            <!-- <li>
+                <div class="text">This is a list item with some long text that will wrap around as needed to fit within the available space.</div>
+                
+            </li> -->
+        </ul>
+    </div>
+    <div>
+        <input type="text" id="execname" style="width: 80%;" readonly placeholder="执行命令">
+        <button onclick="dellast()">删一个</button>
+    </div>
     
     <label>
         <input type="radio" name="option" value="datetime" onclick="toggleInputs()" checked> 执行日期
@@ -97,18 +121,6 @@
                 <div class="buttons">
                     <button>终止任务</button>
                 </div>
-            </li>
-            <li>
-                <div class="text">Another item, this time with shorter text.</div>
-                <div class="buttons">
-                    <button>终止任务</button>
-                </div>
-            </li>
-            <li>
-                <div class="text">Here is a third item with a medium amount of text.</div>
-                <div class="buttons">
-                    <button>终止任务</button>
-                </div>
             </li> -->
         </ul>
     </div>
@@ -119,19 +131,13 @@
     <input class="blk" type="text" id="oldname" placeholder="替换的旧命令名称（可选）">
     <button class="blk" onclick="copystart()">开始复制</button>
     <hr>
-    <h1>红外命令</h1>
-    <div>
-        <button class="blk" onclick="cmdlist()">刷新</button>
-        <ul id="ircmd">
-            <!-- <li>
-                <div class="text">This is a list item with some long text that will wrap around as needed to fit within the available space.</div>
-                
-            </li> -->
-        </ul>
-    </div>
-    <hr>
     <button class="blk" onclick="updatetime()">校准时间</button>
     <script>
+        function dellast() {
+            var execname = document.getElementById('execname').value;
+            if (execname === "") return ;
+            document.getElementById('execname').value = execname.split(",").slice(0, -1).join(',')    
+        }
         function copystart() {
             var copyname = document.getElementById('copyname').value;
             var oldname = document.getElementById('oldname').value;
