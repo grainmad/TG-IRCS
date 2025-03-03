@@ -130,12 +130,12 @@
         </ul>
     </div>
     <hr>
-    
+    <button class="blk" onclick="updatetime()">校准时间</button>
     <script>
         function copystart() {
             var copyname = document.getElementById('copyname').value;
             var oldname = document.getElementById('oldname').value;
-            const msg = {cmd: "copy", name: copyname, old: oldname, chat_id: 0}
+            const msg = {cmd: "copy", name: copyname, old: oldname, chat_id: parseInt(Math.floor(new Date().getTime()/1000))}
             sendMessage(JSON.stringify(msg))
             cmdlist();
         }
@@ -148,6 +148,8 @@
                 if (delay != "") {
                     delay += ":00"
                     delay = Math.floor(new Date(delay).getTime()/1000);
+                } else {
+                    delay = 0;
                 }
             } else if (selectedOption === 'delaytime') {
                 delay = parseInt(Math.floor(new Date().getTime()/1000));
@@ -164,26 +166,31 @@
             fq += parseInt(document.getElementById('freqh').value*3600) || 0;
             fq += parseInt(document.getElementById('freqm').value*60) || 0;
             fq += parseInt(document.getElementById('freqs').value) || 0;
+            if (fq == 0) fq = 1
 
-            var rm = parseInt(document.getElementById('remain').value) || 0;
+            var rm = parseInt(document.getElementById('remain').value) || 1;
             
-            const msg = {'cmd': 'exec', 'name': execname, 'start': delay, 'freq': fq, 'remain': rm, 'chat_id': 0} 
+            const msg = {'cmd': 'exec', 'name': execname, 'start': delay, 'freq': fq, 'remain': rm, 'chat_id': parseInt(Math.floor(new Date().getTime()/1000))} 
             sendMessage(JSON.stringify(msg))
             tasklist();
         }
         function tasklist() {
-            const msg = {'cmd': 'tasklist', 'chat_id': 0} 
+            const msg = {'cmd': 'tasklist', 'chat_id': parseInt(Math.floor(new Date().getTime()/1000))} 
             sendMessage(JSON.stringify(msg))
         }
         function cmdlist() {
-            const msg = {'cmd': 'cmdlist', 'chat_id': 0} 
+            const msg = {'cmd': 'cmdlist', 'chat_id': parseInt(Math.floor(new Date().getTime()/1000))} 
             sendMessage(JSON.stringify(msg))
         }
         function terminate(id) {
             console.log("terminate "+id);
-            const msg = {'cmd': 'terminate', 'taskid':id, 'chat_id': 0} 
+            const msg = {'cmd': 'terminate', 'taskid':id, 'chat_id': parseInt(Math.floor(new Date().getTime()/1000))} 
             sendMessage(JSON.stringify(msg))
             tasklist();
+        }
+        function updatetime(id) {
+            const msg = {'cmd': 'updatetime', 'chat_id': parseInt(Math.floor(new Date().getTime()/1000))} 
+            sendMessage(JSON.stringify(msg))
         }
         function toggleInputs() {
             const dateInput = document.getElementById('dateInput');
@@ -246,7 +253,7 @@
             let pTags = messages.querySelectorAll('p');
 
             // 如果p标签的数量大于或等于5个
-            if (pTags.length >= 5) {
+            if (pTags.length >= 6) {
             // 删除第一个p标签
             pTags[0].remove();
             }
@@ -273,11 +280,13 @@
                 const taskList = document.getElementById("taskqueue")
                 // 清空现有的列表项
                 taskList.innerHTML = "";
-                data.tasks.forEach(task => {
-                    const li = document.createElement("li");
-                    li.innerHTML = `<div class="text">任务号：${task.taskid}<br>指令：${task.cmd}<br>指令编号：${task.xid}<br>执行时间：${formatTimestamp(task.start)}<br>周期：${formatSeconds(task.freq)}<br>剩余次数：${task.remain}<br></div><div class="buttons"><button onclick="terminate(${task.taskid})">终止任务</button></div>`;
-                    taskList.appendChild(li);
-                });
+                if (data.tasks !== undefined) {
+                    data.tasks.forEach(task => {
+                        const li = document.createElement("li");
+                        li.innerHTML = `<div class="text">任务号：${task.taskid}<br>指令：${task.cmd}<br>指令编号：${task.xid}<br>执行时间：${formatTimestamp(task.start)}<br>周期：${formatSeconds(task.freq)}<br>剩余次数：${task.remain}<br></div><div class="buttons"><button onclick="terminate(${task.taskid})">终止任务</button></div>`;
+                        taskList.appendChild(li);
+                    });
+                }
             }
             if (data.message.includes("success")) {
                 if (data.message.includes("task")) tasklist();
@@ -288,6 +297,9 @@
         socket.onopen = function() {
             console.log('WebSocket is connected.');
             addmessage("<p>Connected to WebSocket server.</p>")
+            updatetime();
+            tasklist();
+            cmdlist();
         };
         socket.onerror = function(error) {
             console.error('WebSocket Error: ', error);
@@ -301,13 +313,9 @@
                 socket.send(message);
                 addmessage("<p>You: " + message + "</p>")
             } else {
-                alert('WebSocket is not open.');
+                // alert('WebSocket is not open.');
             }
         }
-        window.onload = function() {
-            tasklist();
-            cmdlist();
-        };
 
     </script>
 </body>

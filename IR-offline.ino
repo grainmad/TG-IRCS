@@ -8,15 +8,14 @@
 #include <Ticker.h>
 #include <FS.h>
 #include <ArduinoJson.h>
-#include <WiFiUdp.h>
-#include <NTPClient.h> 
-#include <WiFiManager.h>
+#include <DNSServer.h>
 #include <ESPAsyncTCP.h>
-// #include <ESPAsyncWebServer.h>
 #include <WebSocketsServer.h>
 #include <ESP8266WebServer.h>
+
+// dns
+DNSServer dnsServer;
 // web 
-// 创建异步Web服务器对象，监听端口80
 ESP8266WebServer server(80);
 
 // 创建WebSocket服务器对象，监听端口81
@@ -156,12 +155,12 @@ const char index_html[] PROGMEM = R"rawliteral(
         </ul>
     </div>
     <hr>
-    
+    <button class="blk" onclick="updatetime()">校准时间</button>
     <script>
         function copystart() {
             var copyname = document.getElementById('copyname').value;
             var oldname = document.getElementById('oldname').value;
-            const msg = {cmd: "copy", name: copyname, old: oldname, chat_id: 0}
+            const msg = {cmd: "copy", name: copyname, old: oldname, chat_id: parseInt(Math.floor(new Date().getTime()/1000))}
             sendMessage(JSON.stringify(msg))
             cmdlist();
         }
@@ -174,6 +173,8 @@ const char index_html[] PROGMEM = R"rawliteral(
                 if (delay != "") {
                     delay += ":00"
                     delay = Math.floor(new Date(delay).getTime()/1000);
+                } else {
+                    delay = 0;
                 }
             } else if (selectedOption === 'delaytime') {
                 delay = parseInt(Math.floor(new Date().getTime()/1000));
@@ -190,26 +191,31 @@ const char index_html[] PROGMEM = R"rawliteral(
             fq += parseInt(document.getElementById('freqh').value*3600) || 0;
             fq += parseInt(document.getElementById('freqm').value*60) || 0;
             fq += parseInt(document.getElementById('freqs').value) || 0;
+            if (fq == 0) fq = 1
 
-            var rm = parseInt(document.getElementById('remain').value) || 0;
+            var rm = parseInt(document.getElementById('remain').value) || 1;
             
-            const msg = {'cmd': 'exec', 'name': execname, 'start': delay, 'freq': fq, 'remain': rm, 'chat_id': 0} 
+            const msg = {'cmd': 'exec', 'name': execname, 'start': delay, 'freq': fq, 'remain': rm, 'chat_id': parseInt(Math.floor(new Date().getTime()/1000))} 
             sendMessage(JSON.stringify(msg))
             tasklist();
         }
         function tasklist() {
-            const msg = {'cmd': 'tasklist', 'chat_id': 0} 
+            const msg = {'cmd': 'tasklist', 'chat_id': parseInt(Math.floor(new Date().getTime()/1000))} 
             sendMessage(JSON.stringify(msg))
         }
         function cmdlist() {
-            const msg = {'cmd': 'cmdlist', 'chat_id': 0} 
+            const msg = {'cmd': 'cmdlist', 'chat_id': parseInt(Math.floor(new Date().getTime()/1000))} 
             sendMessage(JSON.stringify(msg))
         }
         function terminate(id) {
             console.log("terminate "+id);
-            const msg = {'cmd': 'terminate', 'taskid':id, 'chat_id': 0} 
+            const msg = {'cmd': 'terminate', 'taskid':id, 'chat_id': parseInt(Math.floor(new Date().getTime()/1000))} 
             sendMessage(JSON.stringify(msg))
             tasklist();
+        }
+        function updatetime(id) {
+            const msg = {'cmd': 'updatetime', 'chat_id': parseInt(Math.floor(new Date().getTime()/1000))} 
+            sendMessage(JSON.stringify(msg))
         }
         function toggleInputs() {
             const dateInput = document.getElementById('dateInput');
@@ -272,7 +278,7 @@ const char index_html[] PROGMEM = R"rawliteral(
             let pTags = messages.querySelectorAll('p');
 
             // 如果p标签的数量大于或等于5个
-            if (pTags.length >= 5) {
+            if (pTags.length >= 6) {
             // 删除第一个p标签
             pTags[0].remove();
             }
@@ -299,11 +305,13 @@ const char index_html[] PROGMEM = R"rawliteral(
                 const taskList = document.getElementById("taskqueue")
                 // 清空现有的列表项
                 taskList.innerHTML = "";
-                data.tasks.forEach(task => {
-                    const li = document.createElement("li");
-                    li.innerHTML = `<div class="text">任务号：${task.taskid}<br>指令：${task.cmd}<br>指令编号：${task.xid}<br>执行时间：${formatTimestamp(task.start)}<br>周期：${formatSeconds(task.freq)}<br>剩余次数：${task.remain}<br></div><div class="buttons"><button onclick="terminate(${task.taskid})">终止任务</button></div>`;
-                    taskList.appendChild(li);
-                });
+                if (data.tasks !== undefined) {
+                    data.tasks.forEach(task => {
+                        const li = document.createElement("li");
+                        li.innerHTML = `<div class="text">任务号：${task.taskid}<br>指令：${task.cmd}<br>指令编号：${task.xid}<br>执行时间：${formatTimestamp(task.start)}<br>周期：${formatSeconds(task.freq)}<br>剩余次数：${task.remain}<br></div><div class="buttons"><button onclick="terminate(${task.taskid})">终止任务</button></div>`;
+                        taskList.appendChild(li);
+                    });
+                }
             }
             if (data.message.includes("success")) {
                 if (data.message.includes("task")) tasklist();
@@ -314,6 +322,9 @@ const char index_html[] PROGMEM = R"rawliteral(
         socket.onopen = function() {
             console.log('WebSocket is connected.');
             addmessage("<p>Connected to WebSocket server.</p>")
+            updatetime();
+            tasklist();
+            cmdlist();
         };
         socket.onerror = function(error) {
             console.error('WebSocket Error: ', error);
@@ -327,26 +338,18 @@ const char index_html[] PROGMEM = R"rawliteral(
                 socket.send(message);
                 addmessage("<p>You: " + message + "</p>")
             } else {
-                alert('WebSocket is not open.');
+                // alert('WebSocket is not open.');
             }
         }
-        window.onload = function() {
-            tasklist();
-            cmdlist();
-        };
 
     </script>
 </body>
 </html>
-
 )rawliteral";
 
-// flash键 配网络
-const uint16_t flashPin = 0; // GPIO0 D3
 
 // AP
-const char* ap_ssid="ESP8266_config_wifi";
-const char* ap_ssid2="ESP8266_panel";
+const char* ap_ssid="ESP8266_panel";
 const char* ap_password="12345678";
 
 // 定义红外接收的管脚
@@ -392,10 +395,6 @@ struct Task {
 int exec_queue[TASK_N];
 int eqsz = 0;
 
-// 定期同步网络时间，断网则用本机时间
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP);
-
 DynamicJsonDocument doc(1536);
 DynamicJsonDocument rdoc(1536);
 
@@ -424,6 +423,10 @@ void startServers() {
   server.on("/", []() {
     server.send(200, "text/html", index_html);
   });
+  server.onNotFound([]() {
+    server.sendHeader("Location", "/", true);
+    server.send(302, "text/plain", "");
+  }); // 404 处理
   server.begin();
   webSocket.begin();
   webSocket.onEvent(webSocketEvent);
@@ -445,29 +448,11 @@ void LED_flash(int n) { // 闪烁n次
 }
 
 
-void connect_wifi(int init, int fail_rst) {
-  stopServers();
-  WiFi.softAPdisconnect(true); // 断联web ap
-
-  digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
-  WiFiManager wifiManager;
-  wifiManager.setConnectTimeout(30); // 连接wifi 30秒超时
-  if (!(init?wifiManager.autoConnect(ap_ssid, ap_password):wifiManager.startConfigPortal(ap_ssid, ap_password))) { // 优先连接保存的WiFi配置， true如果成功连接到 WiFi（自动连接或通过配网完成）
-    Serial.println("Failed to connect, restarting...");
-    delay(3000);
-    if (!fail_rst) return ;
-    ESP.restart(); // 连接失败重启
-  }
-  LED_flash(5); //成功闪烁4下
-  WiFi.softAP(ap_ssid2, ap_password);
-  startServers();
-}
-
 
 // 定时函数执行耗时操作会崩溃，主循环loop中检测到标记变量则执行耗时操作
-Ticker wf;
-int tag_wifi=0;
-void itv_wifi() { tag_wifi++; }
+Ticker wt;
+uint64_t webtime=0;
+void itv_wt() { webtime++; }
 
 // must after rdoc.clear()
 void msg_pub_print(int code, const String& msg, int num) {
@@ -493,32 +478,9 @@ void solve_msg(String Msg, int num) {
   rdoc.clear();
   deserializeJson(doc, Msg);
   String cmd = doc["cmd"];
-
-  if (cmd == "taskidlist") {
-    for (int i=0,j=0; i<TASK_N; i++) {
-      if (tasklist[i].remain>0) {
-        rdoc["taskids"][j] = i;
-        j++;
-      }
-    }
-    msg_pub_print(200, "get taskidlist ok", num);
+  if (cmd == "updatetime") {
+    webtime = doc["chat_id"];
   }
-
-  if (cmd == "task") {
-    int id = doc["id"];
-    if (0 <= id && id < TASK_N && tasklist[id].remain>0) {
-      rdoc["task"]["remain"] = tasklist[id].remain;
-      rdoc["task"]["start"] = tasklist[id].start;
-      rdoc["task"]["freq"] = tasklist[id].freq;
-      rdoc["task"]["cmd"] = tasklist[id].cmd;
-      rdoc["task"]["xid"] = tasklist[id].xid;
-      rdoc["task"]["taskid"] = id;
-      msg_pub_print(200, "get task ok", num);
-    } else {
-      msg_pub_print(400, "illegal task id", num);
-    }
-  }
-
   if (cmd == "tasklist") {
     for (int i=0,j=0; i<TASK_N; i++) {
       if (tasklist[i].remain>0) {
@@ -730,38 +692,34 @@ void setup() {
   }
 
   
-  // web
-  // startServers();
 
   // network
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(ap_ssid, ap_password);
 
-  connect_wifi(1, 1);
-  
-  Serial.print("Station IP: ");
-  Serial.println(WiFi.localIP());
   Serial.print("AP IP: ");
   Serial.println(WiFi.softAPIP());
   Serial.printf("macAddress is %s\r\n",WiFi.macAddress().c_str());  
 
-  wf.attach(30, itv_wifi);
+  // dns
+  dnsServer.start(53, "*", WiFi.softAPIP());
 
+  // web
+  startServers();
   
-  // ntp
-  timeClient.begin();
-  timeClient.update();
-  Serial.println(timeClient.getFormattedTime() + " " + timeClient.getEpochTime());
+  // time
+  wt.attach(1, itv_wt);
 }
 
 
 void loop() {
   // task slover
   for (int i=0; i<TASK_N; i++) {
-    if (tasklist[i].remain > 0 && tasklist[i].start <= timeClient.getEpochTime()) {
+    if (tasklist[i].remain > 0 && tasklist[i].start <= webtime) {
       exec_queue[eqsz++] = tasklist[i].xid;
       uint64_t remain = tasklist[i].remain, freq = tasklist[i].freq;
-      if (tasklist[i].start+freq<timeClient.getEpochTime()) 
-        tasklist[i].start = timeClient.getEpochTime();
+      if (tasklist[i].start+freq<webtime) 
+        tasklist[i].start = webtime;
       if (remain>1) {
           tasklist[i].start += freq;
       }
@@ -807,26 +765,8 @@ void loop() {
     digitalWrite(LED_BUILTIN, HIGH);
     copy_mode = 0;
   }
-
-  // check wifi
-  if (tag_wifi>=1) {
-    // Serial.print("itv check WiFi: ");
-    if(WiFi.status()!=WL_CONNECTED){
-      LED_flash(2); // 闪烁2次 wifi 断联
-      Serial.println("WiFi disconnected, trying to reconnect...");
-      WiFi.reconnect();
-    } else {
-      // Serial.println("WiFi connected");
-    }
-    tag_wifi = 0;
-    timeClient.update();
-  }
-  if (digitalRead(flashPin) == LOW) {
-    Serial.println("Flash button pressed!");
-    connect_wifi(0,0);
-  }
-  
-  webSocket.loop();
+  dnsServer.processNextRequest();
   server.handleClient();
+  webSocket.loop();
   
 }   
