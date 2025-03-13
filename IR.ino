@@ -93,9 +93,9 @@ DynamicJsonDocument rdoc(1536);
 void LED_flash(int n) { // 闪烁n次
   for (int i=0; i<n; i++) {
     digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
-    delay(200);
+    delay(100);
     digitalWrite(LED_BUILTIN, HIGH);
-    delay(200);
+    delay(100);
   }
 }
 
@@ -435,8 +435,8 @@ void setup() {
 
   Serial.printf("macAddress is %s\r\n",WiFi.macAddress().c_str());  
   connect_mqtt();  // 连接MQTT
-  wf.attach(30, itv_wifi);
-  mt.attach(5, itv_mqtt);
+  wf.attach(60, itv_wifi);
+  mt.attach(30, itv_mqtt);
   lp.attach(0.5, itv_loop);
 
 
@@ -533,4 +533,5 @@ void loop() {
     Serial.println("Flash button pressed!");
     connect_wifi(0,0);
   }
+  delay(50);
 }   
