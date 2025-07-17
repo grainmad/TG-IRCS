@@ -32,14 +32,6 @@ class Service:
         return data
 
     def exec(self, message):
-        args = [i for i in message.text.split(' ')[1:] if i]
-        data = {"cmd":"exec", "name":"", "start":0, "freq":0, "remain":1,"chat_id":message.chat.id}
-        if 0<len(args) and args[0] : 
-            data["name"] = args[0]
-        else:
-            self.bot.reply_to(message, "not set name", parse_mode="Markdown")
-            return 
-
         def parse_start(ts):
             # 时间戳
             if ts.isdigit():
@@ -88,12 +80,65 @@ class Service:
             if rm.isdigit():
                 return int(rm)
             return 1
-        if 1<len(args) and args[1] : 
-            data["start"] = parse_start(args[1])
-        if 2<len(args) and args[2] : 
-            data["freq"] = parse_freq(args[2])
-        if 3<len(args) and args[3] : 
-            data["remain"] = parse_remain(args[3])
+        
+        data = {"cmd":"exec", "name":"", "start":0, "freq":0, "cron": "", "remain":1,"chat_id":message.chat.id}
+        
+        if "cron(" in message.text:
+            txt = message.text
+            args = []
+            # parse name
+            ns = 0
+            while ns<len(txt) and txt[ns] != ' ': ns+=1
+            while ns<len(txt) and txt[ns] == ' ': ns+=1
+            ne = ns
+            while ne<len(txt) and txt[ne] != ' ': ne+=1
+
+            if ns != ne:
+                args.append(txt[ns:ne])
+            print (txt[ne:])
+            # parse cron
+            cs, ce = -1, -1
+            for i, j in enumerate(txt):
+                if j == '(': cs = i+1
+                if j == ')': ce = i
+                print(i, j, " = ", cs, ce)
+            if cs < ce:
+                args.append(txt[cs:ce])
+            print(args)
+            # parse remain
+            args.extend([i for i in txt[ce+1:].split(' ') if i])
+            print(args)
+            
+            if 0<len(args) and args[0] : 
+                data["name"] = args[0]
+            else:
+                self.bot.reply_to(message, "not set name", parse_mode="Markdown")
+                return 
+
+            if 1<len(args) and args[1] : 
+                data["cron"] = args[1]
+            else:
+                self.bot.reply_to(message, "cron expr error", parse_mode="Markdown")
+                return
+            
+            if 2<len(args) and args[2] :
+                data["remain"] = parse_remain(args[2])
+            
+        else:
+            args = [i for i in message.text.split(' ')[1:] if i]
+            
+            if 0<len(args) and args[0] : 
+                data["name"] = args[0]
+            else:
+                self.bot.reply_to(message, "not set name", parse_mode="Markdown")
+                return 
+            
+            if 1<len(args) and args[1] : 
+                data["start"] = parse_start(args[1])
+            if 2<len(args) and args[2] : 
+                data["freq"] = parse_freq(args[2])
+            if 3<len(args) and args[3] : 
+                data["remain"] = parse_remain(args[3])
         
         return data
 

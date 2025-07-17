@@ -14,6 +14,146 @@
 #include <NTPClient.h> 
 #include <WiFiManager.h>
 
+/* cron matcher */
+
+// 东八区时差（秒）
+#define TIMEZONE_OFFSET (8 * 3600)
+
+// cron字段结构
+typedef struct {
+    int sec[60];     // 秒 0-59
+    int min[60];     // 分钟 0-59
+    int hour[24];    // 小时 0-23
+    int day[32];     // 日 1-31
+    int month[13];   // 月 1-12
+    int wday[8];     // 星期 0-7 (0和7都表示周日)
+} CronPattern;
+
+// 解析数字范围，如 "1-5" 或 "*/2"
+int parse_range(const char *field, int *array, int min_val, int max_val) {
+    char *token, *saveptr;
+    char field_copy[256];
+    strcpy(field_copy, field);
+    
+    // 清空数组
+    for (int i = min_val; i <= max_val; i++) {
+        array[i] = 0;
+    }
+    
+    token = strtok_r(field_copy, ",", &saveptr);
+    while (token != NULL) {
+        // 处理 "*" 或 "*/n"
+        if (token[0] == '*') {
+            int step = 1;
+            if (strlen(token) > 1 && token[1] == '/') {
+                step = atoi(token + 2);
+            }
+            for (int i = min_val; i <= max_val; i += step) {
+                array[i] = 1;
+            }
+        }
+        // 处理范围 "a-b" 或 "a-b/c"
+        else if (strchr(token, '-') != NULL) {
+            char *dash = strchr(token, '-');
+            *dash = '\0';
+            int start = atoi(token);
+            
+            char *end_part = dash + 1;
+            int end, step = 1;
+            
+            if (strchr(end_part, '/') != NULL) {
+                char *slash = strchr(end_part, '/');
+                *slash = '\0';
+                end = atoi(end_part);
+                step = atoi(slash + 1);
+            } else {
+                end = atoi(end_part);
+            }
+            
+            for (int i = start; i <= end; i += step) {
+                if (i >= min_val && i <= max_val) {
+                    array[i] = 1;
+                }
+            }
+        }
+        // 处理单个数字
+        else {
+            int num = atoi(token);
+            if (num >= min_val && num <= max_val) {
+                array[num] = 1;
+            }
+        }
+        
+        token = strtok_r(NULL, ",", &saveptr);
+    }
+    
+    return 0;
+}
+
+// 解析cron表达式
+int parse_cron(const char *cron_expr, CronPattern *pattern) {
+    char expr_copy[512];
+    strcpy(expr_copy, cron_expr);
+    
+    char *fields[6];
+    int field_count = 0;
+    
+    // 分割字段
+    char *token = strtok(expr_copy, " \t");
+    while (token != NULL && field_count < 6) {
+        fields[field_count++] = token;
+        token = strtok(NULL, " \t");
+    }
+    
+    // 支持5字段和6字段两种格式
+    if (field_count == 5) {
+        // 5字段格式 (分 时 日 月 星期)
+        // 秒字段设为所有值
+        for (int i = 0; i < 60; i++) {
+            pattern->sec[i] = 1;
+        }
+        parse_range(fields[0], pattern->min, 0, 59);     // 分钟
+        parse_range(fields[1], pattern->hour, 0, 23);    // 小时
+        parse_range(fields[2], pattern->day, 1, 31);     // 日
+        parse_range(fields[3], pattern->month, 1, 12);   // 月
+        parse_range(fields[4], pattern->wday, 0, 7);     // 星期
+    } else if (field_count == 6) {
+        // 6字段格式 (秒 分 时 日 月 星期)
+        parse_range(fields[0], pattern->sec, 0, 59);     // 秒
+        parse_range(fields[1], pattern->min, 0, 59);     // 分钟
+        parse_range(fields[2], pattern->hour, 0, 23);    // 小时
+        parse_range(fields[3], pattern->day, 1, 31);     // 日
+        parse_range(fields[4], pattern->month, 1, 12);   // 月
+        parse_range(fields[5], pattern->wday, 0, 7);     // 星期
+    } else {
+        return -1;
+    }
+    
+    // 处理星期0和7都表示周日
+    if (pattern->wday[0] || pattern->wday[7]) {
+        pattern->wday[0] = pattern->wday[7] = 1;
+    }
+    
+    return 0;
+}
+
+// 检查时间是否匹配cron模式
+int match_cron(time_t timestamp, const CronPattern *pattern) {
+    // 转换为东八区时间
+    timestamp += TIMEZONE_OFFSET;
+    struct tm *tm_info = gmtime(&timestamp);
+    
+    // 检查各字段是否匹配
+    if (!pattern->sec[timestamp % 60]) return 0;        // 秒
+    if (!pattern->min[tm_info->tm_min]) return 0;
+    if (!pattern->hour[tm_info->tm_hour]) return 0;
+    if (!pattern->day[tm_info->tm_mday]) return 0;
+    if (!pattern->month[tm_info->tm_mon + 1]) return 0;  // tm_mon是0-11
+    if (!pattern->wday[tm_info->tm_wday]) return 0;      // tm_wday是0-6
+    
+    return 1;
+}
+/* end cron matcher */
 
 #define MQTT_PARAM_CNT 6
 
@@ -73,6 +213,7 @@ struct Task {
   uint64_t start;
   uint64_t freq;
   String cmd;
+  String cron;
 } tasklist[TASK_N];
 // 执行队列
 int exec_queue[TASK_N];
@@ -202,6 +343,7 @@ void solve_msg(String Msg) {
       rdoc["task"]["freq"] = tasklist[id].freq;
       rdoc["task"]["cmd"] = tasklist[id].cmd;
       rdoc["task"]["xid"] = tasklist[id].xid;
+      rdoc["task"]["cron"] = tasklist[id].cron;
       rdoc["task"]["taskid"] = id;
       msg_pub_print(200, "get task ok");
     } else {
@@ -217,6 +359,7 @@ void solve_msg(String Msg) {
         rdoc["tasks"][j]["freq"] = tasklist[i].freq;
         rdoc["tasks"][j]["cmd"] = tasklist[i].cmd;
         rdoc["tasks"][j]["xid"] = tasklist[i].xid;
+        rdoc["tasks"][j]["cron"] = tasklist[i].cron;
         rdoc["tasks"][j]["taskid"] = i;
         j++;
       }
@@ -264,6 +407,7 @@ void solve_msg(String Msg) {
       start += t;// 指令间间隔一秒
       uint64_t freq = doc["freq"];
       uint64_t remain = doc["remain"];
+      String cron = doc["cron"];
       // Serial.println(name+" "+start+" "+freq);
       int xid = 0;
       for (; xid<COPY_N; xid++) {
@@ -283,11 +427,21 @@ void solve_msg(String Msg) {
         msg_pub_print(400, String("exec failure, tasklist is full, max is ")+TASK_N);
         continue;
       }
+      // check cron expr
+      if (cron != "") {
+        CronPattern pattern;
+        if (parse_cron(cron.c_str(), &pattern) != 0) {
+          msg_pub_print(400, "exec failure, cron expr ["+name+"] error!");
+          continue;
+        }
+      }
+      
       tasklist[task_id].remain = remain;
       tasklist[task_id].freq = freq;
       tasklist[task_id].start = start;
       tasklist[task_id].cmd = name;
       tasklist[task_id].xid = xid;
+      tasklist[task_id].cron = cron;
       msg_pub_print(200, "add "+name+" to tasklist");
 
     }
@@ -450,7 +604,18 @@ void setup() {
 void loop() {
   // task slover
   for (int i=0; i<TASK_N; i++) {
-    if (tasklist[i].remain > 0 && tasklist[i].start <= timeClient.getEpochTime()) {
+    if (tasklist[i].remain <= 0) continue;
+    if (tasklist[i].cron != "") { // 优先cron
+      size_t u = timeClient.getEpochTime();
+      if (tasklist[i].start == u) continue; // 一秒内不可重复执行
+      CronPattern pattern;
+      parse_cron(tasklist[i].cron.c_str(), &pattern);
+      if (match_cron(u, &pattern)) {
+        exec_queue[eqsz++] = tasklist[i].xid;
+        tasklist[i].start = u;
+        if (--tasklist[i].remain == 0) tasklist[i].cron = ""; // 消除影响后续任务
+      }
+    } else if (tasklist[i].start <= timeClient.getEpochTime()) {
       exec_queue[eqsz++] = tasklist[i].xid;
       uint64_t remain = tasklist[i].remain, freq = tasklist[i].freq;
       if (tasklist[i].start+freq<timeClient.getEpochTime()) 
