@@ -69,7 +69,7 @@
 有时需要多条命令才能达到想要的效果，命令又多又长。可以用较短的别名来组织管理。
 
 `/preference`
-- 偏好设置，可管理和执行别名，通过别名可以批量执行exec类型指令。
+- 偏好设置，可管理和执行别名，通过别名可以批量执行指令。
   ``` text
   /preference [name]
   [+addname]
@@ -78,18 +78,18 @@
   [-delname]
   ```
     - `name` 执行别名，多个以空格分割，必须与`/preference`同一行
-    - `addname` 添加别名，必须以`+`开头标识，接下来的行将识别为`exec`命令的参数。
+    - `addname` 添加别名，必须以`+`开头标识，接下来的行将识别为命令以及其参数（注意命令不要带有`/`开头）。
     - `delname` 删除别名，必须以`-`开头标识
     - 支持多别名删除与添加
 - 使用示例：
   ``` text
   /preference alias1
   +alias1
-  cmd1
-  cmd2
+  exec cmd 1h
+  tasklist
   -alias2
   ```
-  添加别名`alias1`，`alias1`包含了`cmd1`和`cmd2`两条指令。  
+  添加别名`alias1`，`alias1`包含了`exec cmd1 1h`和`tasklist`两条指令。  
   删除别名`alias2`，如果存在的话。  
   返回当前的别名列表。  
   最后执行别名alias1的命令序列。
@@ -143,12 +143,28 @@ cp env.json.template env.json
 
 **下载依赖**
 ``` shell
+cd tg
 pip -r requirements.txt
 ```
 **运行机器人**   
 ~~请确保控制台有梯子~~
 ``` shell
-python tg.py
+python tg_bot.py
+```
+**添加命令提示**
+操作tg内搜索@BotFather 找到对应机器人，然后Edit Commands
+```
+start - 开始
+help - 帮助
+copy - 学习红外命令
+cmdlist - 学习到的命令
+exec - 执行红外命令
+tasklist - 当前任务队列信息
+terminate - 终止任务
+preference - 别名管理或执行
+device - 展示或切换设备列表
+usermod - 添加删除的用户
+auth - 向管理员认证，申请使用指令
 ```
 
 ## esp8266部署

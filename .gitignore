@@ -1,2 +1,5 @@
 env.json
 db.json
+.venv
+.DS_Store
+tg/__pycache__
