@@ -35,11 +35,6 @@ int parse_range(const char *field, int *array, int min_val, int max_val) {
     char field_copy[256];
     strcpy(field_copy, field);
     
-    // 清空数组
-    for (int i = min_val; i <= max_val; i++) {
-        array[i] = 0;
-    }
-    
     token = strtok_r(field_copy, ",", &saveptr);
     while (token != NULL) {
         // 处理 "*" 或 "*/n"
@@ -92,6 +87,7 @@ int parse_range(const char *field, int *array, int min_val, int max_val) {
 
 // 解析cron表达式
 int parse_cron(const char *cron_expr, CronPattern *pattern) {
+    memset(pattern, 0, sizeof(CronPattern));
     char expr_copy[512];
     strcpy(expr_copy, cron_expr);
     
@@ -108,10 +104,7 @@ int parse_cron(const char *cron_expr, CronPattern *pattern) {
     // 支持5字段和6字段两种格式
     if (field_count == 5) {
         // 5字段格式 (分 时 日 月 星期)
-        // 秒字段设为所有值
-        for (int i = 0; i < 60; i++) {
-            pattern->sec[i] = 1;
-        }
+        pattern->sec[0] = 1; // 默认0秒执行
         parse_range(fields[0], pattern->min, 0, 59);     // 分钟
         parse_range(fields[1], pattern->hour, 0, 23);    // 小时
         parse_range(fields[2], pattern->day, 1, 31);     // 日
@@ -214,6 +207,7 @@ struct Task {
   uint64_t freq;
   String cmd;
   String cron;
+  CronPattern cp;
 } tasklist[TASK_N];
 // 执行队列
 int exec_queue[TASK_N];
@@ -428,12 +422,9 @@ void solve_msg(String Msg) {
         continue;
       }
       // check cron expr
-      if (cron != "") {
-        CronPattern pattern;
-        if (parse_cron(cron.c_str(), &pattern) != 0) {
-          msg_pub_print(400, "exec failure, cron expr ["+name+"] error!");
-          continue;
-        }
+      if (cron != "" && parse_cron(cron.c_str(), &tasklist[task_id].cp) != 0) {
+        msg_pub_print(400, "exec failure, cron expr ["+name+"] error!");
+        continue;
       }
       
       tasklist[task_id].remain = remain;
@@ -608,9 +599,7 @@ void loop() {
     if (tasklist[i].cron != "") { // 优先cron
       size_t u = timeClient.getEpochTime();
       if (tasklist[i].start == u) continue; // 一秒内不可重复执行
-      CronPattern pattern;
-      parse_cron(tasklist[i].cron.c_str(), &pattern);
-      if (match_cron(u, &pattern)) {
+      if (match_cron(u, &tasklist[i].cp)) {
         exec_queue[eqsz++] = tasklist[i].xid;
         tasklist[i].start = u;
         if (--tasklist[i].remain == 0) tasklist[i].cron = ""; // 消除影响后续任务
