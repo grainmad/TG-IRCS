@@ -87,6 +87,10 @@ def bot_exec(message):
 def bot_terminate(message):
     return service.terminate(message)
 
+@bot.message_handler(commands=['terminatename'])
+@Permissions
+def bot_terminate(message):
+    return service.terminatename(message)
 
 @bot.message_handler(commands=['cmdlist'])
 @Permissions

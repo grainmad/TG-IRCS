@@ -206,6 +206,7 @@ struct Task {
   uint64_t start;
   uint64_t freq;
   String cmd;
+  String taskname;
   String cron;
   CronPattern cp;
 } tasklist[TASK_N];
@@ -338,6 +339,7 @@ void solve_msg(String Msg) {
       rdoc["task"]["cmd"] = tasklist[id].cmd;
       rdoc["task"]["xid"] = tasklist[id].xid;
       rdoc["task"]["cron"] = tasklist[id].cron;
+      rdoc["task"]["taskname"] = tasklist[id].taskname;
       rdoc["task"]["taskid"] = id;
       msg_pub_print(200, "get task ok");
     } else {
@@ -354,6 +356,7 @@ void solve_msg(String Msg) {
         rdoc["tasks"][j]["cmd"] = tasklist[i].cmd;
         rdoc["tasks"][j]["xid"] = tasklist[i].xid;
         rdoc["tasks"][j]["cron"] = tasklist[i].cron;
+        rdoc["tasks"][j]["taskname"] = tasklist[i].taskname;
         rdoc["tasks"][j]["taskid"] = i;
         j++;
       }
@@ -389,6 +392,30 @@ void solve_msg(String Msg) {
     
   }
 
+  if (cmd == "terminatename") { // 支持非数字字符分割的taskid 2,4 1
+    String cmds = doc["taskname"];
+    int cmds_len = cmds.length();
+    for (int i=0, j; (j=i)<cmds_len; i=j) {
+      while (j<cmds_len && !(33 <= cmds.charAt(j) && cmds.charAt(j) <= 126) ) j++; // 跳过不可见字符
+      i = j;
+      while (j<cmds_len && (33 <= cmds.charAt(j) && cmds.charAt(j) <= 126) ) j++;
+      if (i<j) {
+        String taskname = cmds.substring(i,j);
+        int id = 0;
+        while (id<TASK_N && !(tasklist[id].remain>0 && tasklist[id].taskname == taskname)) id++;
+        if (id == TASK_N) {
+          msg_pub_print(400, "not find taskname");
+        } else {
+          tasklist[id].remain = 0;
+          msg_pub_print(200, "terminate task "+cmds.substring(i,j)+" ok");
+        }
+      } else {
+        msg_pub_print(400, "illegal taskname");
+      }  
+    }
+    
+  }
+
   if (cmd == "exec") {                            // exec cmd
     String cmds = doc["name"];
     Serial.println(cmds);
@@ -402,6 +429,7 @@ void solve_msg(String Msg) {
       uint64_t freq = doc["freq"];
       uint64_t remain = doc["remain"];
       String cron = doc["cron"];
+      String taskname = doc["taskname"];
       // Serial.println(name+" "+start+" "+freq);
       int xid = 0;
       for (; xid<COPY_N; xid++) {
@@ -433,6 +461,7 @@ void solve_msg(String Msg) {
       tasklist[task_id].cmd = name;
       tasklist[task_id].xid = xid;
       tasklist[task_id].cron = cron;
+      tasklist[task_id].taskname = taskname;
       msg_pub_print(200, "add "+name+" to tasklist");
 
     }

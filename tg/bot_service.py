@@ -81,7 +81,7 @@ class Service:
                 return int(rm)
             return 1
         
-        data = {"cmd":"exec", "name":"", "start":0, "freq":0, "cron": "", "remain":1,"chat_id":message.chat.id}
+        data = {"cmd":"exec", "name":"", "start":0, "freq":0, "cron": "", "remain":1, "taskname":"", "chat_id":message.chat.id}
         
         if "cron(" in message.text:
             txt = message.text
@@ -124,6 +124,9 @@ class Service:
             if 2<len(args) and args[2] :
                 data["remain"] = parse_remain(args[2])
             
+            if 3<len(args) and args[3] and len(args[3]) < 10:
+                data["taskname"] = args[3]
+            
         else:
             args = [i for i in message.text.split(' ')[1:] if i]
             
@@ -139,11 +142,16 @@ class Service:
                 data["freq"] = parse_freq(args[2])
             if 3<len(args) and args[3] : 
                 data["remain"] = parse_remain(args[3])
+            if 4<len(args) and args[4] and len(args[4]) < 10:
+                data["taskname"] = args[4]
         
         return data
 
     def terminate(self, message):
-        return {"cmd":"terminate", "taskid":",".join(message.text.split(' ')[1:]), "chat_id":message.chat.id}
+        return {"cmd":"terminate", "taskid":" ".join(message.text.split(' ')[1:]), "chat_id":message.chat.id}
+    
+    def terminatename(self, message):
+        return {"cmd":"terminatename", "taskname":" ".join(message.text.split(' ')[1:]), "chat_id":message.chat.id}
 
     def cmdlist(self, message):
         return {"cmd":"cmdlist", "chat_id":message.chat.id}

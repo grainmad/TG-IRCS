@@ -48,15 +48,15 @@ class MutiMqttClients:
                 if "task" in rsp:
                     it = rsp["task"]
                     if it["cron"]:
-                        rt += f'\n任务号: {it["taskid"]}\n指令: {it["cmd"]}\n指令编号: {it["xid"]}\ncron: {it["cron"]}\n剩余次数:{it["remain"]}\n'
+                        rt += f'\n任务号: {it["taskid"]}\n任务名: {it["taskname"]}\n指令: {it["cmd"]}\n指令编号: {it["xid"]}\ncron: {it["cron"]}\n剩余次数:{it["remain"]}\n'
                     else:
-                        rt += f'\n任务号: {it["taskid"]}\n指令: {it["cmd"]}\n指令编号: {it["xid"]}\n执行时间: {unix_timestamp_to_datetime(it["start"])}\n周期: {seconds_to_hms(it["freq"])}\n剩余次数:{it["remain"]}\n'
+                        rt += f'\n任务号: {it["taskid"]}\n任务名: {it["taskname"]}\n指令: {it["cmd"]}\n指令编号: {it["xid"]}\n执行时间: {unix_timestamp_to_datetime(it["start"])}\n周期: {seconds_to_hms(it["freq"])}\n剩余次数:{it["remain"]}\n'
                 if "tasks" in rsp:
                     for it in rsp["tasks"]:
                         if it["cron"]:
-                            rt += f'\n任务号: {it["taskid"]}\n指令: {it["cmd"]}\n指令编号: {it["xid"]}\ncron: {it["cron"]}\n剩余次数:{it["remain"]}\n'
+                            rt += f'\n任务号: {it["taskid"]}\n任务名: {it["taskname"]}\n指令: {it["cmd"]}\n指令编号: {it["xid"]}\ncron: {it["cron"]}\n剩余次数:{it["remain"]}\n'
                         else:
-                            rt += f'\n任务号: {it["taskid"]}\n指令: {it["cmd"]}\n指令编号: {it["xid"]}\n执行时间: {unix_timestamp_to_datetime(it["start"])}\n周期: {seconds_to_hms(it["freq"])}\n剩余次数:{it["remain"]}\n'
+                            rt += f'\n任务号: {it["taskid"]}\n任务名: {it["taskname"]}\n指令: {it["cmd"]}\n指令编号: {it["xid"]}\n执行时间: {unix_timestamp_to_datetime(it["start"])}\n周期: {seconds_to_hms(it["freq"])}\n剩余次数:{it["remain"]}\n'
                 if "cmds" in rsp:
                     for it in rsp["cmds"]:
                         rt += f"  {it}\n"
