@@ -181,7 +181,8 @@ copy - 学习红外命令
 cmdlist - 学习到的命令
 exec - 执行红外命令
 tasklist - 当前任务队列信息
-terminate - 终止任务
+terminate - 以任务id终止任务
+terminatename - 以任务名终止任务
 preference - 别名管理或执行
 device - 展示或切换设备列表
 usermod - 添加删除的用户
