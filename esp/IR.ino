@@ -401,13 +401,11 @@ void solve_msg(String Msg) {
       while (j<cmds_len && (33 <= cmds.charAt(j) && cmds.charAt(j) <= 126) ) j++;
       if (i<j) {
         String taskname = cmds.substring(i,j);
-        int id = 0;
-        while (id<TASK_N && !(tasklist[id].remain>0 && tasklist[id].taskname == taskname)) id++;
-        if (id == TASK_N) {
-          msg_pub_print(400, "not find taskname");
-        } else {
-          tasklist[id].remain = 0;
-          msg_pub_print(200, "terminate task "+cmds.substring(i,j)+" ok");
+        for (int id=0; id<TASK_N; id++) {
+          if (tasklist[id].remain>0 && tasklist[id].taskname == taskname) {
+            tasklist[id].remain = 0;
+            msg_pub_print(200, "terminate task "+cmds.substring(i,j)+" ok");
+          }
         }
       } else {
         msg_pub_print(400, "illegal taskname");

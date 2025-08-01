@@ -33,7 +33,7 @@
 ## 执行红外指令
 可定时定期定量执行多条红外命令
 
-`/exec name [ [start] [freq] | [cron(cron_expr)] ] [remain]`
+`/exec name [ [start] [freq] | [cron(cron_expr)] ] [remain] [taskname]`
 - `name`  
     - 执行命令，单片机校验不存在则执行失败
     - 多条命令以逗号分割，然后命令会顺序执行
@@ -70,6 +70,8 @@
     - 剩余执行次数  
     - 默认 `1`
     
+- `taskname`
+    - 任务名
 
 ## 任务队列信息
 对于延期执行的命令，将在队列中存储
