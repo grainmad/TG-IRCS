@@ -144,7 +144,7 @@
 ## 机器人部署
 ### 环境
 * 梯子
-* `Python 3.12.4`
+* `Python 3.12.4`（可用`pyenv`管理不同版本）
 ### 步骤
 
 **配置环境变量**
@@ -164,15 +164,16 @@ cp env.json.template env.json
     - `ir_password` MQTT密码
 
 
-**下载依赖**
+**创建虚拟环境并下载依赖**
 ``` shell
 cd tg
+python -m venv .venv 
 pip -r requirements.txt
 ```
 **运行机器人**   
 ~~请确保控制台有梯子~~
 ``` shell
-python tg_bot.py
+./control.sh start
 ```
 **添加命令提示**
 操作tg内搜索@BotFather 找到对应机器人，然后Edit Commands

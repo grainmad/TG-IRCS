@@ -4,8 +4,6 @@
 SCRIPT_NAME=$(basename "$0")
 # 程序名称
 PROGRAM="tg_bot.py"
-# 日志文件
-LOG_FILE="tg_bot.log"
 # 虚拟环境路径
 VENV_PATH="./.venv/bin/activate"
 
