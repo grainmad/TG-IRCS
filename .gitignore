@@ -4,3 +4,4 @@ db.json
 .DS_Store
 tg/__pycache__
 tg/tg_bot.log
+tg/nohup.out

@@ -7,7 +7,7 @@ PROGRAM="tg_bot.py"
 # 日志文件
 LOG_FILE="tg_bot.log"
 # 虚拟环境路径
-VENV_PATH="/root/py-venv/bin/activate"
+VENV_PATH="./.venv/bin/activate"
 
 # 帮助信息
 usage() {
@@ -34,7 +34,7 @@ start() {
     # 激活虚拟环境并启动程序
     echo "正在启动 $PROGRAM..."
     source "$VENV_PATH"
-    nohup stdbuf -oL -eL python "$PROGRAM" >> "$LOG_FILE" 2>&1 &
+    nohup python "$PROGRAM" &
     
     sleep 1  # 等待程序启动
     

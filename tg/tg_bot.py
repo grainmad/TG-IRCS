@@ -3,7 +3,12 @@ import config_manager
 import bot_service
 import util
 import mqtt
+from logging_config import setup_logging
+import logging
 
+# 在任何其他导入和代码之前初始化日志
+setup_logging()
+logger = logging.getLogger(__name__)
 
 env, devices, db = config_manager.load_config()
 
@@ -17,13 +22,16 @@ def Permissions(func):
     def wrapper(*args, **kwargs):
         # 只保留ascii可见字符和空格换行
         args[0].text =  ''.join(filter(lambda char: 32 <= ord(char) <= 126 or char == '\n', args[0].text))
-        print(args[0])
+        logger.debug(f"权限检查: {args[0]}")
         message = args[0]
         if message.chat.id not in db["user"]:
+            logger.warning(f"未授权用户尝试访问: user_id={message.from_user.id}, chat_id={message.chat.id}")
             bot.reply_to(message, f"authentication required")
             return 
+        logger.info(f"用户权限验证通过: user_id={message.from_user.id}, chat_id={message.chat.id}")
         data = func(*args, **kwargs)  # 调用被装饰的函数，并传递所有参数
         if data:
+            logger.info(f"发送MQTT消息: topic={db['device']['ir_pub_topic']}, data={str(data)}")
             mqttClients.get(db["device"]["name"]).publish(db["device"]["ir_pub_topic"], str(data), 0)
             bot.reply_to(message, f"{str(data)} is transmitted")
     return wrapper
@@ -32,6 +40,7 @@ def Permissions(func):
 @bot.message_handler(commands=['preference'])
 @Permissions
 def bot_preference(message):
+    logger.info(f"执行preference命令: user_id={message.from_user.id}")
     lines = [i for i in message.text.split('\n') if i]
     # 添加删除别名
     adding = ""
@@ -48,6 +57,7 @@ def bot_preference(message):
         if adding:
             db["preference"][adding].append(line)
     util.save_dict(util.DBFILE, db)
+    logger.info(f"preference配置更新完成，当前别名数量: {len(db['preference'])}")
 
     # 返回别名列表
     preference_msg = "\n".join([ f"{k}\n    {"\n    ".join(v)}" for k,v in db["preference"].items()])
@@ -56,6 +66,7 @@ def bot_preference(message):
     # 执行别名
     args = [i for i in lines[0].split(" ")[1:] if i]
     for alias in args:
+        logger.info(f"执行别名: {alias}")
         bot.send_message(message.chat.id, f"executing {alias} ...")
         if alias in db["preference"]:
             for seq in db["preference"][alias]:
@@ -66,9 +77,11 @@ def bot_preference(message):
                 try:
                     data = util.dynamic_call(service, cmd, message)
                     if data:
+                        logger.info(f"别名命令执行成功: {cmd}, data={str(data)}")
                         mqttClients.get(db["device"]["name"]).publish(db["device"]["ir_pub_topic"], str(data), 0)
                         bot.send_message(message.chat.id, f"{str(data)} is transmitted")
                 except AttributeError as e:
+                    logger.error(f"别名命令不存在: {cmd}")
                     bot.send_message(message.chat.id, f"command {cmd} not found")
 
 @bot.message_handler(commands=['copy'])
@@ -139,7 +152,13 @@ def bot_help(message):
     service.help(message)
     
 
-bot.infinity_polling()
+if __name__ == "__main__":
+    logger.info("TG Bot启动")
+    try:
+        bot.infinity_polling()
+    except Exception as e:
+        logger.critical(f"TG Bot运行异常: {e}")
+        raise
 
 
 
