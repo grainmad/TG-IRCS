@@ -164,10 +164,18 @@ cp env.json.template env.json
     - `ir_password` MQTT密码
 
 
-**创建虚拟环境并下载依赖**
+**配置python环境**
 ``` shell
 cd tg
-python -m venv .venv 
+# 下载3.12.4版本
+pyenv install 3.12.4
+# 设置当前目录自动切换pyhton3.12.4
+pyenv local 3.12.4
+# 创建虚拟环境
+python -m venv .venv
+# 激活虚拟环境的python
+source .venv/bin/activate
+# 依赖下载到当前虚拟环境 
 pip -r requirements.txt
 ```
 **运行机器人**   
