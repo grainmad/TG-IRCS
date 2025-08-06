@@ -164,7 +164,7 @@ cp env.json.template env.json
     - `ir_password` MQTT密码
 
 
-**配置python环境**
+~~**配置python环境**~~
 ``` shell
 cd tg
 # 下载3.12.4版本
@@ -179,7 +179,7 @@ source .venv/bin/activate
 pip -r requirements.txt
 ```
 **运行机器人**   
-~~请确保控制台有梯子~~
+确保pyenv安装后，一键启动
 ``` shell
 ./control.sh start
 ```

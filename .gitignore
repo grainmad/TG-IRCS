@@ -1,8 +1,8 @@
+.DS_Store
 env.json
 db.json
-.venv
-.python-version
-.DS_Store
+tg/.venv
+tg/.python-version
 tg/__pycache__
 tg/tg_bot.log
 tg/nohup.out
