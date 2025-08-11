@@ -205,13 +205,14 @@ struct Task {
   uint64_t remain;
   uint64_t start;
   uint64_t freq;
+  uint64_t uid;
   String cmd;
   String taskname;
   String cron;
   CronPattern cp;
 } tasklist[TASK_N];
 // 执行队列
-int exec_queue[TASK_N];
+struct Task* exec_queue[TASK_N];
 int eqsz = 0;
 
 // 定期同步网络时间，断网则用本机时间
@@ -303,8 +304,8 @@ void itv_mqtt() { tag_mqtt++; }
 void itv_loop() { tag_loop++; }
 
 // must after rdoc.clear()
-void msg_pub_print(int code, const String& msg) {
-  rdoc["chat_id"] = doc["chat_id"];
+void msg_pub_print(int code, uint64_t uid, const String& msg) {
+  rdoc["chat_id"] = uid;
   rdoc["code"] = code;
   rdoc["message"] = msg;
   String result;
@@ -319,6 +320,7 @@ void solve_msg(String Msg) {
   rdoc.clear();
   deserializeJson(doc, Msg);
   String cmd = doc["cmd"];
+  uint64_t uid = doc["chat_id"];
 
   if (cmd == "taskidlist") {
     for (int i=0,j=0; i<TASK_N; i++) {
@@ -327,7 +329,7 @@ void solve_msg(String Msg) {
         j++;
       }
     }
-    msg_pub_print(200, "get taskidlist ok");
+    msg_pub_print(200, uid, "get taskidlist ok");
   }
 
   if (cmd == "task") {
@@ -341,9 +343,9 @@ void solve_msg(String Msg) {
       rdoc["task"]["cron"] = tasklist[id].cron;
       rdoc["task"]["taskname"] = tasklist[id].taskname;
       rdoc["task"]["taskid"] = id;
-      msg_pub_print(200, "get task ok");
+      msg_pub_print(200, uid, "get task ok");
     } else {
-      msg_pub_print(400, "illegal task id");
+      msg_pub_print(400, uid, "illegal task id");
     }
   }
 
@@ -361,7 +363,7 @@ void solve_msg(String Msg) {
         j++;
       }
     }
-    msg_pub_print(200, "get tasklist ok");
+    msg_pub_print(200, uid, "get tasklist ok");
   }
 
   if (cmd == "cmdlist") {
@@ -371,7 +373,7 @@ void solve_msg(String Msg) {
         rdoc["cmds"][j++] = copy_name[i];
       }
     }
-    msg_pub_print(200, "get cmdlist ok");
+    msg_pub_print(200, uid, "get cmdlist ok");
   }
 
   if (cmd == "terminate") { // 支持非数字字符分割的taskid 2,4 1
@@ -384,9 +386,9 @@ void solve_msg(String Msg) {
       while (j<cmds_len && ('0' <= cmds.charAt(j) && cmds.charAt(j) <= '9') ) id = id*10+cmds.charAt(j++)-'0';
       if (i<j && 0 <= id && id < TASK_N && tasklist[id].remain>0) {
         tasklist[id].remain = 0;
-        msg_pub_print(200, "terminate task "+cmds.substring(i,j)+" ok");
+        msg_pub_print(200, uid, "terminate task "+cmds.substring(i,j)+" ok");
       } else {
-        msg_pub_print(400, "illegal task id");
+        msg_pub_print(400, uid, "illegal task id");
       }  
     }
     
@@ -404,11 +406,11 @@ void solve_msg(String Msg) {
         for (int id=0; id<TASK_N; id++) {
           if (tasklist[id].remain>0 && tasklist[id].taskname == taskname) {
             tasklist[id].remain = 0;
-            msg_pub_print(200, "terminate task "+cmds.substring(i,j)+" ok");
+            msg_pub_print(200, uid, "terminate task "+cmds.substring(i,j)+" ok");
           }
         }
       } else {
-        msg_pub_print(400, "illegal taskname");
+        msg_pub_print(400, uid, "illegal taskname");
       }  
     }
     
@@ -437,19 +439,19 @@ void solve_msg(String Msg) {
       }
       // not exist name 
       if (xid == COPY_N) {
-        msg_pub_print(400, "exec failure, cmd name ["+name+"] not exist!");
+        msg_pub_print(400, uid, "exec failure, cmd name ["+name+"] not exist!");
         continue;
       }
       // find first not use task place
       int task_id = 0;
       while (task_id<TASK_N && tasklist[task_id].remain > 0) task_id++;
       if (task_id == TASK_N) {
-        msg_pub_print(400, String("exec failure, tasklist is full, max is ")+TASK_N);
+        msg_pub_print(400, uid, String("exec failure, tasklist is full, max is ")+TASK_N);
         continue;
       }
       // check cron expr
       if (cron != "" && parse_cron(cron.c_str(), &tasklist[task_id].cp) != 0) {
-        msg_pub_print(400, "exec failure, cron expr ["+name+"] error!");
+        msg_pub_print(400, uid, "exec failure, cron expr ["+name+"] error!");
         continue;
       }
       
@@ -458,9 +460,10 @@ void solve_msg(String Msg) {
       tasklist[task_id].start = start;
       tasklist[task_id].cmd = name;
       tasklist[task_id].xid = xid;
+      tasklist[task_id].uid = uid;
       tasklist[task_id].cron = cron;
       tasklist[task_id].taskname = taskname;
-      msg_pub_print(200, "add "+name+" to tasklist");
+      msg_pub_print(200, uid, "add "+name+" to tasklist");
 
     }
     
@@ -481,7 +484,7 @@ void solve_msg(String Msg) {
       }
       // not exist
       if (i == COPY_N) {
-        msg_pub_print(400, "copy failure: old name ["+old+"] not exist!");
+        msg_pub_print(400, uid, "copy failure: old name ["+old+"] not exist!");
         return ;
       }
     } else { // no old
@@ -501,7 +504,7 @@ void solve_msg(String Msg) {
       
     comming_copy_name = name;
     copy_mode = 1;
-    msg_pub_print(200, "copy start ok");
+    msg_pub_print(200, uid, "copy start ok");
   }
 }
 
@@ -528,8 +531,8 @@ void save_copy() {
   copy_cover = (copy_cover+1)%COPY_N;
   
   
-  rdoc.clear();
-  msg_pub_print(200, "copy ["+comming_copy_name+"] success, repalce [" + prename + "]");
+  // can not send mqtt to other user after received copy mqtt
+  msg_pub_print(200, rdoc["chat_id"], "copy ["+comming_copy_name+"] success, repalce [" + prename + "]");
 }
 
 
@@ -627,12 +630,12 @@ void loop() {
       size_t u = timeClient.getEpochTime();
       if (tasklist[i].start == u) continue; // 一秒内不可重复执行
       if (match_cron(u, &tasklist[i].cp)) {
-        exec_queue[eqsz++] = tasklist[i].xid;
+        exec_queue[eqsz++] = &tasklist[i];
         tasklist[i].start = u;
         if (--tasklist[i].remain == 0) tasklist[i].cron = ""; // 消除影响后续任务
       }
     } else if (tasklist[i].start <= timeClient.getEpochTime()) {
-      exec_queue[eqsz++] = tasklist[i].xid;
+      exec_queue[eqsz++] = &tasklist[i];
       uint64_t remain = tasklist[i].remain, freq = tasklist[i].freq;
       if (tasklist[i].start+freq<timeClient.getEpochTime()) 
         tasklist[i].start = timeClient.getEpochTime();
@@ -644,43 +647,13 @@ void loop() {
   }
   // exec task 
   for (int i=0; i<eqsz; i++) {
-    int xid = exec_queue[i];
+    int xid = exec_queue[i]->xid;
     irsend.sendRaw(copy_signal[xid], copy_length[xid], 38);
     rdoc.clear();
-    msg_pub_print(200, "task:exec "+copy_name[xid]+" success");
+    msg_pub_print(200, exec_queue[i]->uid, "task:exec "+copy_name[xid]+" success");
     delay(800); // 同时执行的指令，间隔0.8s
   }
   eqsz = 0;
-
-  // copy cmd
-  if (copy_mode) {
-    irrecv.resume();
-    digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
-    // print all signal in 10s
-    uint64_t ts = millis();
-    Serial.printf("current ts:%d\r\n", ts);
-    uint8_t is_copy = 0;
-    while (ts+10000>millis()) { // 10s内可学习
-      if (irrecv.decode(&results)) {
-        is_copy = 1;
-        // Display the basic output of what we found.
-        Serial.print(resultToHumanReadableBasic(&results));
-        // Display any extra A/C info if we have it.
-        String description = IRAcUtils::resultAcToString(&results);
-        if (description.length()) Serial.println(D_STR_MESGDESC ": " + description);
-        String sc = resultToSourceCode(&results);
-        Serial.println(sc);
-        record_copy(sc);
-        irrecv.resume();
-      }
-      yield(); // 喂狗
-    }
-    if (is_copy)
-      save_copy();
-    Serial.printf("current ts:%d\r\n", millis());
-    digitalWrite(LED_BUILTIN, HIGH);
-    copy_mode = 0;
-  }
 
   // check wifi
   if (tag_wifi>=1) {
@@ -710,6 +683,36 @@ void loop() {
     pc.loop();
     tag_loop = 0;
   }
+  // copy cmd
+  if (copy_mode) {
+    irrecv.resume();
+    digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
+    // print all signal in 10s
+    uint64_t ts = millis();
+    Serial.printf("current ts:%d\r\n", ts);
+    uint8_t is_copy = 0;
+    while (ts+10000>millis()) { // 10s内可学习
+      if (irrecv.decode(&results)) {
+        is_copy = 1;
+        // Display the basic output of what we found.
+        Serial.print(resultToHumanReadableBasic(&results));
+        // Display any extra A/C info if we have it.
+        String description = IRAcUtils::resultAcToString(&results);
+        if (description.length()) Serial.println(D_STR_MESGDESC ": " + description);
+        String sc = resultToSourceCode(&results);
+        Serial.println(sc);
+        record_copy(sc);
+        irrecv.resume();
+      }
+      yield(); // 喂狗
+    }
+    if (is_copy)
+      save_copy();
+    Serial.printf("current ts:%d\r\n", millis());
+    digitalWrite(LED_BUILTIN, HIGH);
+    copy_mode = 0;
+  }
+  
   if (digitalRead(flashPin) == LOW) {
     Serial.println("Flash button pressed!");
     connect_wifi(0,0);
