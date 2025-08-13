@@ -656,12 +656,7 @@ void loop() {
         }
       } else if (tasklist[i].start <= last_check) {
         exec_queue[eqsz++] = &tasklist[i];
-        uint64_t remain = tasklist[i].remain, freq = tasklist[i].freq;
-        if (tasklist[i].start+freq<last_check) 
-          tasklist[i].start = last_check;
-        if (remain>1) {
-          tasklist[i].start += freq;
-        }
+        tasklist[i].start += tasklist[i].freq;
         tasklist[i].remain--;
       }
     }
