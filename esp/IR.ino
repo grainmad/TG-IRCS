@@ -12,7 +12,8 @@
 #include <ArduinoJson.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h> 
-#include <WiFiManager.h>
+#include <ESP8266WebServer.h>
+#include <DNSServer.h>
 
 /* cron matcher */
 
@@ -148,20 +149,31 @@ int match_cron(time_t timestamp, const CronPattern *pattern) {
 }
 /* end cron matcher */
 
-#define MQTT_PARAM_CNT 7
+#define CONFIG_CNT 9
 
-#define MQTTSERVER 0
-#define MQTTPORT 1
-#define MQTTUSER 2
-#define MQTTPASSWORD 3
-#define MQTTPUBTOPIC 4
-#define MQTTSUBTOPIC 5
-#define ADMINUID 6
+#define WIFI_SSID 0
+#define WIFI_PASSWORD 1
+#define MQTT_SERVER 2
+#define MQTT_PORT 3
+#define MQTT_USER 4
+#define MQTT_PASSWORD 5
+#define MQTT_PUBTOPIC 6
+#define MQTT_SUBTOPIC 7
+#define ADMIN_UID 8
 
-#define MQTT_PARAM_LEN 20
-char param[MQTT_PARAM_CNT][MQTT_PARAM_LEN];
-String mqtt_param_filename = "/mqtt_param";
+#define CONFIG_LEN 20
+char config[CONFIG_CNT][CONFIG_LEN];
+String config_filename = "/svrConfig";
 uint64_t admin_user = 0;
+
+
+// 配网相关
+ESP8266WebServer webServer(80);
+DNSServer dnsServer;
+const byte DNS_PORT = 53;
+bool config_mode = false;
+bool need_restart_wifi = false;  // 标志位，用于延迟处理WiFi重连
+
 // flash键 配网络
 const uint16_t flashPin = 0; // GPIO0 D3
 
@@ -224,8 +236,8 @@ NTPClient timeClient(ntpUDP);
 WiFiClient wc;
 PubSubClient pc(wc);
 // 收发json消息
-DynamicJsonDocument doc(2);
-DynamicJsonDocument rdoc(2);
+DynamicJsonDocument doc(1536);
+DynamicJsonDocument rdoc(1536);
 
 size_t last_check;
 
@@ -238,67 +250,193 @@ void LED_flash(int n) { // 闪烁n次
   }
 }
 
-void save_mqtt_param() {
-  File f = SPIFFS.open(mqtt_param_filename, "w");
-  for (int i=0; i<MQTT_PARAM_CNT; i++) {
-    f.write((char *)&param[i], MQTT_PARAM_LEN);
+void save_config() {
+  File f = SPIFFS.open(config_filename, "w");
+  for (int i=0; i<CONFIG_CNT; i++) {
+    f.write((char *)&config[i], CONFIG_LEN);
   }
   f.close();
 }
-void load_mqtt_param() {
-  File f = SPIFFS.open(mqtt_param_filename, "r");
-  for (int i=0; i<MQTT_PARAM_CNT; i++) {
-    f.read((uint8_t *) &param[i], MQTT_PARAM_LEN);
+void load_config() {
+  File f = SPIFFS.open(config_filename, "r");
+  for (int i=0; i<CONFIG_CNT; i++) {
+    f.read((uint8_t *) &config[i], CONFIG_LEN);
   }
   f.close();
 }
 
-void connect_wifi(int init, int fail_rst) {
-  load_mqtt_param();
+void handleRoot() {
+  String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>WiFi配置</title>";
+  html += "<style>body{font-family:Arial;margin:40px;background:#f0f0f0}";
+  html += ".container{background:white;padding:20px;border-radius:10px;max-width:500px;margin:0 auto}";
+  html += "input{width:100%;padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:5px}";
+  html += "button{background:#007cba;color:white;padding:10px 20px;border:none;border-radius:5px;cursor:pointer}";
+  html += "button:hover{background:#005a87}</style></head><body>";
+  html += "<div class='container'><h2>WiFi & MQTT 配置</h2>";
+  html += "<form action='/save' method='post'>";
+  html += "<h3>WiFi设置</h3>";
+  html += "SSID: <input type='text' name='ssid' value='" + String(config[WIFI_SSID]) + "'><br>";
+  html += "密码: <input type='password' name='password' value='" + String(config[WIFI_PASSWORD]) + "'><br>";
+  html += "<h3>MQTT设置</h3>";
+  html += "MQTT服务器: <input type='text' name='mqtt_server' value='" + String(config[MQTT_SERVER]) + "'><br>";
+  html += "MQTT端口: <input type='text' name='mqtt_port' value='" + String(config[MQTT_PORT]) + "'><br>";
+  html += "MQTT用户名: <input type='text' name='mqtt_user' value='" + String(config[MQTT_USER]) + "'><br>";
+  html += "MQTT密码: <input type='password' name='mqtt_password' value='" + String(config[MQTT_PASSWORD]) + "'><br>";
+  html += "发布主题: <input type='text' name='mqtt_pubtopic' value='" + String(config[MQTT_PUBTOPIC]) + "'><br>";
+  html += "订阅主题: <input type='text' name='mqtt_subtopic' value='" + String(config[MQTT_SUBTOPIC]) + "'><br>";
+  html += "管理员用户: <input type='text' name='mqtt_adminuser' value='" + String(config[ADMIN_UID]) + "'><br>";
+  html += "<button type='submit'>保存配置</button>";
+  html += "</form></div></body></html>";
+  webServer.send(200, "text/html", html);
+}
+
+void handleSave() {
+  if (webServer.hasArg("ssid")) {
+    strcpy(config[WIFI_SSID], webServer.arg("ssid").c_str());
+  }
+  if (webServer.hasArg("password")) {
+    strcpy(config[WIFI_PASSWORD], webServer.arg("password").c_str());
+  }
+  if (webServer.hasArg("mqtt_server")) {
+    strcpy(config[MQTT_SERVER], webServer.arg("mqtt_server").c_str());
+  }
+  if (webServer.hasArg("mqtt_port")) {
+    strcpy(config[MQTT_PORT], webServer.arg("mqtt_port").c_str());
+  }
+  if (webServer.hasArg("mqtt_user")) {
+    strcpy(config[MQTT_USER], webServer.arg("mqtt_user").c_str());
+  }
+  if (webServer.hasArg("mqtt_password")) {
+    strcpy(config[MQTT_PASSWORD], webServer.arg("mqtt_password").c_str());
+  }
+  if (webServer.hasArg("mqtt_pubtopic")) {
+    strcpy(config[MQTT_PUBTOPIC], webServer.arg("mqtt_pubtopic").c_str());
+  }
+  if (webServer.hasArg("mqtt_subtopic")) {
+    strcpy(config[MQTT_SUBTOPIC], webServer.arg("mqtt_subtopic").c_str());
+  }
+  if (webServer.hasArg("mqtt_adminuser")) {
+    strcpy(config[ADMIN_UID], webServer.arg("mqtt_adminuser").c_str());
+    admin_user = atoll(config[ADMIN_UID]);
+  }
+  save_config();
+  
+  webServer.send(200, "text/html", 
+    "<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body>"
+    "<div style='text-align:center;margin-top:50px;font-family:Arial'>"
+    "<h2>配置已保存!</h2><p>正在尝试连接WiFi...</p></div></body></html>");
+  
+  // 设置标志位，在主循环中处理WiFi重连
+  need_restart_wifi = true;
+}
+
+void handleNotFound() {
+  // DNS劫持，所有请求都重定向到配置页面
+  webServer.sendHeader("Location", "http://192.168.4.1", true);
+  webServer.send(302, "text/plain", "");
+}
+
+void start_config_mode() {
+  config_mode = true;
+  Serial.println("Starting configuration mode...");
+  
+  // 停止STA模式
+  WiFi.mode(WIFI_OFF);
+  delay(1000);
+  
+  // 启动AP模式
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(ap_ssid, ap_password);
+  delay(2000);
+  
+  IPAddress apIP(192, 168, 4, 1);
+  IPAddress netMsk(255, 255, 255, 0);
+  WiFi.softAPConfig(apIP, apIP, netMsk);
+  
+  // 启动DNS服务器进行劫持
+  dnsServer.start(DNS_PORT, "*", apIP);
+  
+  // 启动Web服务器
+  webServer.on("/", handleRoot);
+  webServer.on("/save", HTTP_POST, handleSave);
+  webServer.onNotFound(handleNotFound);
+  webServer.begin();
+  
+  Serial.println("Configuration mode started");
+  Serial.println("Connect to WiFi: " + String(ap_ssid));
+  Serial.println("Open browser and visit any website");
+  
+}
+
+void stop_config_mode() {
+  if (config_mode) {
+    config_mode = false;
+    webServer.stop();
+    dnsServer.stop();
+    WiFi.softAPdisconnect(true);
+    Serial.println("Configuration mode stopped");
+  }
+}
+
+bool connect_wifi_sta() {
+  if (strlen(config[WIFI_SSID]) == 0) {
+    Serial.println("No WiFi SSID configured");
+    return false;
+  }
+  
+  Serial.println("Connecting to WiFi: " + String(config[WIFI_SSID]));
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(config[WIFI_SSID], config[WIFI_PASSWORD]);
+  
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 30) { // 30秒超时
+    delay(1000);
+    Serial.print(".");
+    attempts++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("");
+    Serial.println("WiFi connected successfully");
+    Serial.println("IP address: " + WiFi.localIP().toString());
+    LED_flash(5); // 成功闪烁5次
+    return true;
+  } else {
+    Serial.println("");
+    Serial.println("WiFi connection failed");
+    return false;
+  }
+}
+
+void init_connect_wifi() {
+  load_config();
+  if (strlen(config[ADMIN_UID])) {
+    admin_user = atoll(config[ADMIN_UID]);
+  }
+  
   digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
-  WiFiManager wifiManager;
-  wifiManager.setConnectTimeout(30); // 连接wifi 30秒超时
-  WiFiManagerParameter wmp[] = {
-    WiFiManagerParameter("mqtt_server", "mqtt server", param[0], MQTT_PARAM_LEN-1),
-    WiFiManagerParameter("mqtt_port", "mqtt port", param[1], MQTT_PARAM_LEN-1),
-    WiFiManagerParameter("mqtt_user", "mqtt user", param[2], MQTT_PARAM_LEN-1),
-    WiFiManagerParameter("mqtt_password", "mqtt password", param[3], MQTT_PARAM_LEN-1),
-    WiFiManagerParameter("mqtt_pubtopic", "publish topic", param[4], MQTT_PARAM_LEN-1),
-    WiFiManagerParameter("mqtt_subtopic", "subscribe topic", param[5], MQTT_PARAM_LEN-1),
-    WiFiManagerParameter("mqtt_adminuser", "admin user", param[6], MQTT_PARAM_LEN-1)
-  };
-  for (int i=0; i<MQTT_PARAM_CNT; i++) {
-    wifiManager.addParameter(&wmp[i]);
+  
+  // 尝试连接WiFi
+  if (connect_wifi_sta()) {
+    digitalWrite(LED_BUILTIN, HIGH);
+    return; // 连接成功
   }
-  if (!(init?wifiManager.autoConnect(ap_ssid, ap_password):wifiManager.startConfigPortal(ap_ssid, ap_password))) { // 优先连接保存的WiFi配置， true如果成功连接到 WiFi（自动连接或通过配网完成）
-    Serial.println("Failed to connect, restarting...");
-    delay(3000);
-    if (!fail_rst) return ;
-    ESP.restart(); // 连接失败重启
-  }
-  LED_flash(5); //成功闪烁4下
-  for (int i=0; i<MQTT_PARAM_CNT; i++) {
-    Serial.println(String("web read param: ")+wmp[i].getValue());
-    if (strlen(wmp[i].getValue())) strcpy(param[i], wmp[i].getValue());
-    Serial.println(String("memery param: ")+param[i]);
-  }
-  int len;
-  if (len = strlen(param[ADMINUID])) {
-    admin_user = atoll(param[ADMINUID]);
-    Serial.println(String("adminuid param: ")+admin_user);
-  }
-  save_mqtt_param();
+  
+  // 连接失败，进入配置模式
+  start_config_mode();
+  
+  digitalWrite(LED_BUILTIN, HIGH);
+  LED_flash(4); // 灭后闪烁4次表示进入配置模式
 }
-
 
 uint8_t connect_mqtt(){
   if(WiFi.status()!=WL_CONNECTED) return -1;
-  pc.setServer(param[MQTTSERVER], atoi(param[MQTTPORT]));
-  if(!pc.connect(WiFi.macAddress().c_str(), param[MQTTUSER], param[MQTTPASSWORD])){     //以物理地址为ID去连接MQTT服务器
+  pc.setServer(config[MQTT_SERVER], atoi(config[MQTT_PORT]));
+  if(!pc.connect(WiFi.macAddress().c_str(), config[MQTT_USER], config[MQTT_PASSWORD])){     //以物理地址为ID去连接MQTT服务器
     Serial.println("connect MQTT fail");
     return -1;
   }
-  pc.subscribe(param[MQTTSUBTOPIC]);    
+  pc.subscribe(config[MQTT_SUBTOPIC]);    
   pc.setCallback(sub_msg_hander);                        //绑定订阅回调函数
   Serial.println("connect MQTT success");
   return 0;
@@ -319,7 +457,7 @@ void msg_pub_print(int code, uint64_t uid, const String& msg, int reset) {
   rdoc["message"] = msg;
   String result;
   serializeJson(rdoc, result);
-  pc.publish(param[MQTTPUBTOPIC], result.c_str());
+  pc.publish(config[MQTT_PUBTOPIC], result.c_str());
   Serial.println(result);
 }
 
@@ -517,7 +655,7 @@ void solve_msg(String Msg) {
   }
 }
 
-void sub_msg_hander(char* topic,byte* payload,unsigned int length){
+void sub_msg_hander(char* topic, byte* payload,unsigned int length){
   Serial.printf("MQTT subscribe data from topic: %s\r\n",topic);
   for(unsigned int i=0;i<length;++i){
     Serial.print((char)payload[i]);
@@ -619,7 +757,7 @@ void setup() {
   }
 
   // network
-  connect_wifi(1, 1);
+  init_connect_wifi();
 
   Serial.printf("macAddress is %s\r\n",WiFi.macAddress().c_str());  
   connect_mqtt();  // 连接MQTT
@@ -730,9 +868,39 @@ void loop() {
     copy_mode = 0;
   }
   
+  // 处理配置模式
+  if (config_mode) {
+    dnsServer.processNextRequest();
+    webServer.handleClient();
+    
+    // 处理延迟的WiFi重连
+    if (need_restart_wifi) {
+      need_restart_wifi = false;
+      delay(1000); // 确保HTTP响应发送完成
+      stop_config_mode();
+      
+      // 尝试连接WiFi
+      if (!connect_wifi_sta()) {
+        // 连接失败，重新开启配置服务
+        Serial.println("WiFi connection failed after config save, restarting config mode...");
+        delay(1000);
+        start_config_mode();
+      } else {
+        // 连接成功，尝试连接MQTT
+        Serial.println("WiFi connected successfully after config save");
+        connect_mqtt();
+      }
+    }
+  }
+  
   if (digitalRead(flashPin) == LOW) {
     Serial.println("Flash button pressed!");
-    connect_wifi(0,0);
+    stop_config_mode(); // 确保先停止当前配置模式
+    delay(100);
+    start_config_mode(); // 进入配置模式
+    while (digitalRead(flashPin) == LOW) { // 等待按键释放
+      delay(50);
+    }
   }
   delay(50);
-}   
+}
