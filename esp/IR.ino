@@ -236,8 +236,7 @@ NTPClient timeClient(ntpUDP);
 WiFiClient wc;
 PubSubClient pc(wc);
 // 收发json消息
-DynamicJsonDocument doc(1536);
-DynamicJsonDocument rdoc(1536);
+StaticJsonDocument<1536> doc, rdoc;
 
 size_t last_check;
 
@@ -337,6 +336,7 @@ void handleNotFound() {
 }
 
 void start_config_mode() {
+  digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
   config_mode = true;
   Serial.println("Starting configuration mode...");
   
@@ -370,6 +370,7 @@ void start_config_mode() {
 
 void stop_config_mode() {
   if (config_mode) {
+    digitalWrite(LED_BUILTIN, HIGH);
     config_mode = false;
     webServer.stop();
     dnsServer.stop();
@@ -408,27 +409,6 @@ bool connect_wifi_sta() {
   }
 }
 
-void init_connect_wifi() {
-  load_config();
-  if (strlen(config[ADMIN_UID])) {
-    admin_user = atoll(config[ADMIN_UID]);
-  }
-  
-  digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
-  
-  // 尝试连接WiFi
-  if (connect_wifi_sta()) {
-    digitalWrite(LED_BUILTIN, HIGH);
-    return; // 连接成功
-  }
-  
-  // 连接失败，进入配置模式
-  start_config_mode();
-  
-  digitalWrite(LED_BUILTIN, HIGH);
-  LED_flash(4); // 灭后闪烁4次表示进入配置模式
-}
-
 uint8_t connect_mqtt(){
   if(WiFi.status()!=WL_CONNECTED) return -1;
   pc.setServer(config[MQTT_SERVER], atoi(config[MQTT_PORT]));
@@ -442,6 +422,23 @@ uint8_t connect_mqtt(){
   return 0;
 }
 
+void init_connect_wifi() {
+  load_config();
+  if (strlen(config[ADMIN_UID])) {
+    admin_user = atoll(config[ADMIN_UID]);
+  }
+  
+  // 尝试连接WiFi
+  if (connect_wifi_sta()) {
+    connect_mqtt();
+    LED_flash(10);
+    return; // 连接成功
+  }
+  
+  // 连接失败，进入配置模式
+  start_config_mode();
+  
+}
 // 定时函数执行耗时操作会崩溃，主循环loop中检测到标记变量则执行耗时操作
 Ticker wf, mt, lp;
 int tag_wifi=0, tag_mqtt=0, tag_loop = 0;
@@ -758,7 +755,6 @@ void setup() {
 
   // network
   init_connect_wifi();
-
   Serial.printf("macAddress is %s\r\n",WiFi.macAddress().c_str());  
   connect_mqtt();  // 连接MQTT
   wf.attach(60, itv_wifi);
@@ -777,8 +773,12 @@ void setup() {
 void loop() {
   // task slover
   size_t cur_check = timeClient.getEpochTime();
+  // 没有联网，时间是开机时间
+  if (last_check < 1000000000 && 1000000000 < cur_check) { // 第一次开机没有成功连上wifi，当前已连接
+    last_check = cur_check;
+  }
   if (cur_check>last_check+1) {
-    if (admin_user)
+    if (admin_user && last_check > 1000000000)
       msg_pub_print(400, admin_user, String("task backlog time slice [")+last_check+","+cur_check+"] total "+(cur_check-last_check)+" seconds", true);
   }
   for (;last_check<cur_check; last_check++) {
@@ -810,63 +810,6 @@ void loop() {
   }
   eqsz = 0;
 
-  // check wifi
-  if (tag_wifi>=1) {
-    // Serial.print("itv check WiFi: ");
-    if(WiFi.status()!=WL_CONNECTED){
-      LED_flash(2); // 闪烁2次 wifi 断联
-      Serial.println("WiFi disconnected, trying to reconnect...");
-      WiFi.reconnect();
-    } else {
-      // Serial.println("WiFi connected");
-    }
-    tag_wifi = 0;
-  }
-  // check mqtt
-  if (tag_mqtt>=1) {
-    // Serial.print("itv check mqtt: ");
-    if(!(WiFi.status()==WL_CONNECTED && pc.connected())){
-      LED_flash(1); // 闪烁1次 mqtt 断联
-      Serial.println("mqtt disconnected, trying to reconnect...");
-      connect_mqtt();                                  // 如果和MQTT服务器断开连接,那么重连
-    }
-    tag_mqtt = 0;
-    timeClient.update();
-    // Serial.println(timeClient.getFormattedTime()+" "+timeClient.getEpochTime());
-  }
-  if (tag_loop>=1) {
-    pc.loop();
-    tag_loop = 0;
-  }
-  // copy cmd
-  if (copy_mode) {
-    irrecv.resume();
-    digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
-    // print all signal in 10s
-    uint64_t ts = millis();
-    Serial.printf("current ts:%d\r\n", ts);
-    uint8_t is_copy = 0;
-    while (ts+10000>millis()) { // 10s内可学习
-      if (irrecv.decode(&results)) {
-        is_copy = 1;
-        // Display the basic output of what we found.
-        Serial.print(resultToHumanReadableBasic(&results));
-        // Display any extra A/C info if we have it.
-        String description = IRAcUtils::resultAcToString(&results);
-        if (description.length()) Serial.println(D_STR_MESGDESC ": " + description);
-        String sc = resultToSourceCode(&results);
-        Serial.println(sc);
-        record_copy(sc);
-        irrecv.resume();
-      }
-      yield(); // 喂狗
-    }
-    if (is_copy)
-      save_copy();
-    Serial.printf("current ts:%d\r\n", millis());
-    digitalWrite(LED_BUILTIN, HIGH);
-    copy_mode = 0;
-  }
   
   // 处理配置模式
   if (config_mode) {
@@ -890,6 +833,64 @@ void loop() {
         Serial.println("WiFi connected successfully after config save");
         connect_mqtt();
       }
+    }
+  } else {
+    // check wifi
+    if (tag_wifi>=1) {
+      // Serial.print("itv check WiFi: ");
+      if(WiFi.status()!=WL_CONNECTED){
+        LED_flash(2); // 闪烁2次 wifi 断联
+        Serial.println("WiFi disconnected, trying to reconnect...");
+        WiFi.reconnect();
+      } else {
+        // Serial.println("WiFi connected");
+      }
+      tag_wifi = 0;
+    }
+    // check mqtt
+    if (tag_mqtt>=1) {
+      // Serial.print("itv check mqtt: ");
+      if(!(WiFi.status()==WL_CONNECTED && pc.connected())){
+        LED_flash(1); // 闪烁1次 mqtt 断联
+        Serial.println("mqtt disconnected, trying to reconnect...");
+        connect_mqtt();                                  // 如果和MQTT服务器断开连接,那么重连
+      }
+      tag_mqtt = 0;
+      timeClient.update();
+      // Serial.println(timeClient.getFormattedTime()+" "+timeClient.getEpochTime());
+    }
+    if (tag_loop>=1) {
+      pc.loop();
+      tag_loop = 0;
+    }
+    // copy cmd
+    if (copy_mode) {
+      irrecv.resume();
+      digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
+      // print all signal in 10s
+      uint64_t ts = millis();
+      Serial.printf("current ts:%d\r\n", ts);
+      uint8_t is_copy = 0;
+      while (ts+10000>millis()) { // 10s内可学习
+        if (irrecv.decode(&results)) {
+          is_copy = 1;
+          // Display the basic output of what we found.
+          Serial.print(resultToHumanReadableBasic(&results));
+          // Display any extra A/C info if we have it.
+          String description = IRAcUtils::resultAcToString(&results);
+          if (description.length()) Serial.println(D_STR_MESGDESC ": " + description);
+          String sc = resultToSourceCode(&results);
+          Serial.println(sc);
+          record_copy(sc);
+          irrecv.resume();
+        }
+        yield(); // 喂狗
+      }
+      if (is_copy)
+        save_copy();
+      Serial.printf("current ts:%d\r\n", millis());
+      digitalWrite(LED_BUILTIN, HIGH);
+      copy_mode = 0;
     }
   }
   
