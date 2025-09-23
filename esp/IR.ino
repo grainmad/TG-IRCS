@@ -777,7 +777,7 @@ void loop() {
   if (last_check < 1000000000 && 1000000000 < cur_check) { // 第一次开机没有成功连上wifi，当前已连接
     last_check = cur_check;
   }
-  if (cur_check>last_check+1) {
+  if (cur_check>last_check+2) {
     if (admin_user && last_check > 1000000000)
       msg_pub_print(400, admin_user, String("task backlog time slice [")+last_check+","+cur_check+"] total "+(cur_check-last_check)+" seconds", true);
   }
