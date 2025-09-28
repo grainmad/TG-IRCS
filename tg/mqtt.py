@@ -43,7 +43,7 @@ class MutiMqttClients:
 
                 def unix_timestamp_to_datetime(timestamp, timezone_hour=8):
                     dt = datetime.fromtimestamp(timestamp, tz=timezone(timedelta(hours=timezone_hour)))
-                    return dt.strftime("%Y-%m-%d/%H:%M:%S")
+                    return dt.strftime("%Y-%m-%dT%H:%M:%S")
                 def seconds_to_hms(seconds):
                     m, s = divmod(seconds, 60)
                     h, m = divmod(m, 60)

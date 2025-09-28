@@ -58,7 +58,7 @@ class Service:
                             num = 0
                     return cur
                 try:
-                    time_format = "%Y-%m-%d/%H:%M:%S"
+                    time_format = "%Y-%m-%dT%H:%M:%S"
                     dt = datetime.strptime(ts, time_format)
                     tz = timezone(timedelta(hours=8))
                     dt = dt.replace(tzinfo=tz)
