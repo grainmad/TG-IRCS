@@ -186,18 +186,19 @@ pip -r requirements.txt
 **添加命令提示**
 操作tg内搜索@BotFather 找到对应机器人，然后Edit Commands
 ```
-start - 开始
-help - 帮助
-copy - 学习红外命令
-cmdlist - 学习到的命令
-exec - 执行红外命令
+alias - 别名管理或执行
 tasklist - 当前任务队列信息
-terminate - 以任务id终止任务
-terminatename - 以任务名终止任务
-preference - 别名管理或执行
+cmdlist - 学习到的命令
+copy - 学习红外命令
+exec - 执行红外命令
 device - 展示或切换设备列表
 usermod - 添加删除的用户
 auth - 向管理员认证，申请使用指令
+terminate - 以任务id终止任务
+terminatename - 以任务名终止任务
+preference - 别名管理或执行，命令操作
+start - 开始
+help - 帮助
 ```
 
 ## esp8266部署

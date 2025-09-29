@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone, timedelta
 
 
 DBFILE = "db.json"
@@ -41,3 +42,14 @@ def dynamic_call(obj, method_name, *args, **kwargs):
         method = getattr(obj, method_name)
         return method(*args, **kwargs)
     raise AttributeError(f"No method '{method_name}'")
+
+
+def unix_timestamp_to_datetime(timestamp, timezone_hour=8):
+    dt = datetime.fromtimestamp(timestamp, tz=timezone(timedelta(hours=timezone_hour)))
+    return dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+def seconds_to_hms(seconds):
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    d, h = divmod(h, 24)
+    return f"{d}d{h:02d}h{m:02d}m{s:02d}s"
