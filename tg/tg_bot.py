@@ -38,7 +38,7 @@ def Permissions(func):
         if data:
             logger.info(f"发送MQTT消息: topic={db['device']['ir_pub_topic']}, data={str(data)}")
             current_mqtt_publish(data)
-            bot.reply_to(message, f"{str(data)} is transmitted")
+            bot.send_message(message, f"{str(data)} is transmitted")
     return wrapper
 
 ### Bot command handlers
@@ -110,7 +110,7 @@ def bot_terminate(message):
 
 @bot.message_handler(commands=['terminatename'])
 @Permissions
-def bot_terminate(message):
+def bot_terminatename(message):
     return service.terminatename(message)
 
 @bot.message_handler(commands=['cmdlist'])
@@ -164,14 +164,14 @@ def bot_help(message):
 @Permissions
 def bot_alias(message):
     logger.info(f"执行alias命令: user_id={message.from_user.id}")
-    go_alias_menu(message)
+    go_alias_menu(message, send=True) # 发送主菜单
 
 ### Callbacks for inline buttons
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("taskid_"))
 def taskid_(call): # 任务菜单 终止任务 id
     call.message.text = f"terminate {call.data[7:]}"
-    data = util.dynamic_call(service, "terminate", call.message)
+    data = service.terminate(call.message)
     if data:
         current_mqtt_publish(data)
         bot.send_message(call.message.chat.id, f"{str(data)} is transmitted")
@@ -181,7 +181,7 @@ def taskid_(call): # 任务菜单 终止任务 id
 @bot.callback_query_handler(func=lambda call: call.data.startswith("taskname_"))
 def taskname_(call): # 任务菜单 终止任务 name
     call.message.text = f"terminatename {call.data[9:]}"
-    data = util.dynamic_call(service, "terminatename", call.message)
+    data = service.terminatename(call.message)
     if data:
         current_mqtt_publish(data)
         bot.send_message(call.message.chat.id, f"{str(data)} is transmitted")
@@ -203,11 +203,11 @@ def alias_del_(call): # alias del子菜单 删除具体别名选项
     del db["preference"][alias]
     util.save_dict(util.DBFILE, db)
     bot.answer_callback_query(call.id)
-    go_alias_del_menu(call) # 刷新删除菜单
+    go_alias_del_menu(call.message) # 刷新删除菜单
     
 
 @bot.callback_query_handler(func=lambda call: call.data == "alias_add")
-def alias_add(call): # alias菜单，添加别名选项
+def alias_add(call): # alias菜单，添加别名选项。完成后发送新alias菜单
     msg = bot.send_message(call.message.chat.id, f"first input alias name, then input commands. e.g.\nmyalias\nmycommand arg1 arg2")
     def add_command(message):
         lines = [i.strip() for i in message.text.split('\n') if i and i.strip()]
@@ -220,48 +220,41 @@ def alias_add(call): # alias菜单，添加别名选项
             db["preference"][alias].append(line)
         util.save_dict(util.DBFILE, db)
         bot.answer_callback_query(call.id)
-        bot_alias(message) # 发送新的alias主菜单
+        go_alias_menu(call.message, send=True) # 发送主菜单
     bot.register_next_step_handler(msg, add_command)
     
 
-def alias_list_edit(call, markup, text):
+def alias_list_msg(message, markup, text, send=False): # 发送或编辑alias列表消息
     preference_msg = "\n".join([ f"{k}\n    {"\n    ".join(v)}" for k,v in db["preference"].items()])
-    bot.edit_message_text(
-        f"alias list:\n{preference_msg}\n\n{text}", 
-        chat_id=call.message.chat.id, 
-        message_id=call.message.message_id,
-        reply_markup = markup
-    )
+    if send:
+        bot.send_message(message.chat.id, f"alias list:\n{preference_msg}\n\n{text}", reply_markup = markup)
+    else:
+        bot.edit_message_text(
+            f"alias list:\n{preference_msg}\n\n{text}", 
+            chat_id=message.chat.id, 
+            message_id=message.message_id,
+            reply_markup = markup
+        )
 
-def go_alias_del_menu(call):
+def go_alias_del_menu(message, send=False):
     markup = types.InlineKeyboardMarkup()
     for k in db["preference"]:
         btn = types.InlineKeyboardButton(k, callback_data=f"alias_del_{k}")
         markup.add(btn)
     markup.add(types.InlineKeyboardButton("⬅ back to alias list", callback_data="alias_cancel"))
 
-    alias_list_edit(call, markup, "which alias del")
+    alias_list_msg(message, markup, "which alias del", send)
 
-@bot.callback_query_handler(func=lambda call: call.data == "alias_del")
-def alias_del(call): # alias菜单进入删除别名子页面    
-    go_alias_del_menu(call)
-    bot.answer_callback_query(call.id)
-
-def go_alias_exc_menu(call):
+def go_alias_exc_menu(message, send=False):
     markup = types.InlineKeyboardMarkup()
     for k in db["preference"]:
         btn = types.InlineKeyboardButton(k, callback_data=f"alias_exc_{k}")
         markup.add(btn)
     markup.add(types.InlineKeyboardButton("⬅ back to alias list", callback_data="alias_cancel"))
 
-    alias_list_edit(call, markup, "which alias exc")
+    alias_list_msg(message, markup, "which alias exc", send)
 
-@bot.callback_query_handler(func=lambda call: call.data == "alias_exc")
-def alias_exc(call): # alias菜单进入执行别名子页面    
-    go_alias_exc_menu(call)
-    bot.answer_callback_query(call.id)
-
-def go_alias_menu(call):
+def go_alias_menu(message, send=False):
     markup = types.InlineKeyboardMarkup()
     buttons = [
        types.InlineKeyboardButton("exc", callback_data="alias_exc"),
@@ -270,11 +263,21 @@ def go_alias_menu(call):
     ]
     markup.add(*buttons)
 
-    alias_list_edit(call, markup, "which alias option")
+    alias_list_msg(message, markup, "which alias option", send)
+
+@bot.callback_query_handler(func=lambda call: call.data == "alias_del")
+def alias_del(call): # alias菜单 变换 删除子页面    
+    go_alias_del_menu(call.message)
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda call: call.data == "alias_exc")
+def alias_exc(call): # alias菜单 变换 执行子页面    
+    bot.answer_callback_query(call.id)
+    go_alias_exc_menu(call.message)
     
 @bot.callback_query_handler(func=lambda call: call.data == "alias_cancel")
-def alias_cancel(call): # 返回到alias主菜单 
-    go_alias_menu(call)
+def alias_cancel(call): # 子页面 变换 alias主菜单 
+    go_alias_menu(call.message)
     bot.answer_callback_query(call.id)
 
 
