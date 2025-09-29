@@ -44,7 +44,7 @@ class MutiMqttClients:
             markup.add(btn)
 
         if rsp["tasks"]:
-            rt += "\nterminate by fllowing buttons"
+            rt += "\nterminate by following buttons"
         self.bot.send_message(rsp["chat_id"], rt, reply_markup = markup)
 
     def cmds_handler(self, rsp):
