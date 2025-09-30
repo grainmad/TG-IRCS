@@ -13,6 +13,9 @@ def load_config():
 
     if"preference" not in db:
         db["preference"] = {}
+    
+    if db["device"]["name"] not in db["preference"]:
+        db["preference"][db["device"]["name"]] = {}
 
-    util.save_dict("db.json", db)
+    util.save_dict(util.DBFILE, db)
     return env, devices, db

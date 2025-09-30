@@ -224,8 +224,10 @@ class Service:
             args = [i for i in message.text.split(' ')[1:] if i]
             if 0<len(args) and args[0] in self.devices: 
                 self.db["device"] = self.devices[args[0]]
+                if self.db["device"]["name"] not in self.db["preference"]:
+                    self.db["preference"][self.db["device"]["name"]] = {}
                 self.bot.reply_to(message, f"device switch to {args[0]}")
-                util.save_dict("db.json", self.db)
+                util.save_dict(util.DBFILE, self.db)
             devices_msg = "\n".join([("+ " if k == self.db["device"]["name"] else "- ")+k for k in self.devices])
             self.bot.reply_to(message, f"device list:\n{devices_msg}")
             self.logger.info(f"device命令执行成功，当前设备: {self.db['device']['name']}")

@@ -48,24 +48,25 @@ def Permissions(func):
 def bot_preference(message):
     logger.info(f"执行preference命令: user_id={message.from_user.id}")
     lines = [i.strip() for i in message.text.split('\n') if i and i.strip()]
+    pref = db["preference"][db["device"]["name"]]
     # 添加删除别名
     adding = ""
     for line in lines[1:]: 
         if line[0] == "+": #不存在空行
             adding = line[1:]
-            db["preference"][adding] = []
+            pref[adding] = []
             continue
         if line[0] == "-":
             adding = ""
-            if line[1:] in db["preference"]: del db["preference"][line[1:]]
+            if line[1:] in pref: del pref[line[1:]]
             continue
         if adding:
-            db["preference"][adding].append(line)
+            pref[adding].append(line)
     util.save_dict(util.DBFILE, db)
     logger.info(f"preference配置更新完成，当前别名数量: {len(db['preference'])}")
 
     # 返回别名列表
-    preference_msg = "\n".join([ f"{k}\n    {"\n    ".join(v)}" for k,v in db["preference"].items()])
+    preference_msg = "\n".join([ f"{k}\n    {"\n    ".join(v)}" for k,v in pref.items()])
     bot.reply_to(message, f"alias list:\n{preference_msg}")
 
     # 执行别名
@@ -74,8 +75,9 @@ def bot_preference(message):
         exec_alias(alias, message)
 
 def exec_alias(alias, message):
-    if alias in db["preference"]:
-        for seq in db["preference"][alias]:
+    pref = db["preference"][db["device"]["name"]]
+    if alias in pref:
+        for seq in pref[alias]:
             cmd = [i for i in seq.split(" ") if i]
             if len(cmd) == 0: continue
             cmd = cmd[0]
@@ -198,9 +200,10 @@ def alias_exec_(call): # alias exc子菜单 执行具体别名选项
 @bot.callback_query_handler(func=lambda call: call.data.startswith("alias_del_"))
 def alias_del_(call): # alias del子菜单 删除具体别名选项
     alias = call.data[10:]
-    if alias not in db["preference"]:
+    pref = db["preference"][db["device"]["name"]]
+    if alias not in pref:
         return
-    del db["preference"][alias]
+    del pref[alias]
     util.save_dict(util.DBFILE, db)
     bot.answer_callback_query(call.id)
     go_alias_del_menu(call.message) # 刷新删除菜单
@@ -215,9 +218,9 @@ def alias_add(call): # alias菜单，添加别名选项。完成后发送新alia
             bot.send_message(message.chat.id, f"invalid format")
             return
         alias = lines[0]
-        db["preference"][alias] = []
+        db["preference"][db["device"]["name"]][alias] = []
         for line in lines[1:]:
-            db["preference"][alias].append(line)
+            db["preference"][db["device"]["name"]][alias].append(line)
         util.save_dict(util.DBFILE, db)
         bot.answer_callback_query(call.id)
         go_alias_menu(call.message, send=True) # 发送主菜单
@@ -225,7 +228,7 @@ def alias_add(call): # alias菜单，添加别名选项。完成后发送新alia
     
 
 def alias_list_msg(message, markup, text, send=False): # 发送或编辑alias列表消息
-    preference_msg = "\n".join([ f"{k}\n    {"\n    ".join(v)}" for k,v in db["preference"].items()])
+    preference_msg = "\n".join([ f"{k}\n    {"\n    ".join(v)}" for k,v in db["preference"][db["device"]["name"]].items()])
     if send:
         bot.send_message(message.chat.id, f"alias list:\n{preference_msg}\n\n{text}", reply_markup = markup)
     else:
@@ -238,7 +241,7 @@ def alias_list_msg(message, markup, text, send=False): # 发送或编辑alias列
 
 def go_alias_del_menu(message, send=False):
     markup = types.InlineKeyboardMarkup()
-    for k in db["preference"]:
+    for k in db["preference"][db["device"]["name"]]:
         btn = types.InlineKeyboardButton(k, callback_data=f"alias_del_{k}")
         markup.add(btn)
     markup.add(types.InlineKeyboardButton("⬅ back to alias list", callback_data="alias_cancel"))
@@ -247,7 +250,7 @@ def go_alias_del_menu(message, send=False):
 
 def go_alias_exc_menu(message, send=False):
     markup = types.InlineKeyboardMarkup()
-    for k in db["preference"]:
+    for k in db["preference"][db["device"]["name"]]:
         btn = types.InlineKeyboardButton(k, callback_data=f"alias_exc_{k}")
         markup.add(btn)
     markup.add(types.InlineKeyboardButton("⬅ back to alias list", callback_data="alias_cancel"))
@@ -267,8 +270,8 @@ def go_alias_menu(message, send=False):
 
 @bot.callback_query_handler(func=lambda call: call.data == "alias_del")
 def alias_del(call): # alias菜单 变换 删除子页面    
-    go_alias_del_menu(call.message)
     bot.answer_callback_query(call.id)
+    go_alias_del_menu(call.message)
 
 @bot.callback_query_handler(func=lambda call: call.data == "alias_exc")
 def alias_exc(call): # alias菜单 变换 执行子页面    
@@ -277,8 +280,8 @@ def alias_exc(call): # alias菜单 变换 执行子页面
     
 @bot.callback_query_handler(func=lambda call: call.data == "alias_cancel")
 def alias_cancel(call): # 子页面 变换 alias主菜单 
-    go_alias_menu(call.message)
     bot.answer_callback_query(call.id)
+    go_alias_menu(call.message)
 
 
 if __name__ == "__main__":
