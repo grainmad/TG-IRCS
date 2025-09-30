@@ -66,7 +66,7 @@ def bot_preference(message):
     logger.info(f"preference配置更新完成，当前别名数量: {len(db['preference'])}")
 
     # 返回别名列表
-    preference_msg = "\n".join([ f"{k}\n    {"\n    ".join(v)}" for k,v in pref.items()])
+    preference_msg = "\n".join([ f"+{k}\n    {"\n    ".join(v)}" for k,v in pref.items()])
     bot.reply_to(message, f"alias list:\n{preference_msg}")
 
     # 执行别名
@@ -228,7 +228,7 @@ def alias_add(call): # alias菜单，添加别名选项。完成后发送新alia
     
 
 def alias_list_msg(message, markup, text, send=False): # 发送或编辑alias列表消息
-    preference_msg = "\n".join([ f"{k}\n    {"\n    ".join(v)}" for k,v in db["preference"][db["device"]["name"]].items()])
+    preference_msg = "\n".join([ f"+{k}\n    {"\n    ".join(v)}" for k,v in db["preference"][db["device"]["name"]].items()])
     if send:
         bot.send_message(message.chat.id, f"alias list:\n{preference_msg}\n\n{text}", reply_markup = markup)
     else:
