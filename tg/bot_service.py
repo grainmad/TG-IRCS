@@ -126,7 +126,7 @@ class Service:
                 if 2<len(args) and args[2] :
                     data["remain"] = parse_remain(args[2])
                 
-                if 3<len(args) and args[3] and len(args[3]) < 10:
+                if 3<len(args) and args[3] and len(args[3]) < 128:
                     data["taskname"] = args[3]
                 
             else:
