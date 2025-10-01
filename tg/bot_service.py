@@ -144,7 +144,7 @@ class Service:
                     data["freq"] = parse_freq(args[2])
                 if 3<len(args) and args[3] : 
                     data["remain"] = parse_remain(args[3])
-                if 4<len(args) and args[4] and len(args[4]) < 10:
+                if 4<len(args) and args[4] and len(args[4]) < 128:
                     data["taskname"] = args[4]
             self.logger.info(f"exec命令执行成功: {message.text}")
             return data
