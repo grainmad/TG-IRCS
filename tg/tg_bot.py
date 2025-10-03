@@ -38,7 +38,7 @@ def Permissions(func):
         if data:
             logger.info(f"发送MQTT消息: topic={db['device']['ir_pub_topic']}, data={str(data)}")
             current_mqtt_publish(data)
-            bot.send_message(message, f"{str(data)} is transmitted")
+            bot.send_message(message.chat.id, f"{str(data)} is transmitted")
     return wrapper
 
 ### Bot command handlers
