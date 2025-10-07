@@ -149,7 +149,7 @@ int match_cron(time_t timestamp, const CronPattern *pattern) {
 }
 /* end cron matcher */
 
-#define CONFIG_CNT 9
+#define CONFIG_CNT 10
 
 #define WIFI_SSID 0
 #define WIFI_PASSWORD 1
@@ -160,6 +160,7 @@ int match_cron(time_t timestamp, const CronPattern *pattern) {
 #define MQTT_PUBTOPIC 6
 #define MQTT_SUBTOPIC 7
 #define ADMIN_UID 8
+#define DEVICE_NAME 9
 
 #define CONFIG_LEN 20
 char config[CONFIG_CNT][CONFIG_LEN];
@@ -284,6 +285,7 @@ void handleRoot() {
   html += "发布主题: <input type='text' name='mqtt_pubtopic' value='" + String(config[MQTT_PUBTOPIC]) + "'><br>";
   html += "订阅主题: <input type='text' name='mqtt_subtopic' value='" + String(config[MQTT_SUBTOPIC]) + "'><br>";
   html += "管理员用户: <input type='text' name='mqtt_adminuser' value='" + String(config[ADMIN_UID]) + "'><br>";
+  html += "设备名称: <input type='text' name='mqtt_devicename' value='" + String(config[DEVICE_NAME]) + "'><br>";
   html += "<button type='submit'>保存配置</button>";
   html += "</form></div></body></html>";
   webServer.send(200, "text/html", html);
@@ -317,6 +319,9 @@ void handleSave() {
   if (webServer.hasArg("mqtt_adminuser")) {
     strcpy(config[ADMIN_UID], webServer.arg("mqtt_adminuser").c_str());
     admin_user = atoll(config[ADMIN_UID]);
+  }
+  if (webServer.hasArg("mqtt_devicename")) {
+    strcpy(config[DEVICE_NAME], webServer.arg("mqtt_devicename").c_str());
   }
   save_config();
   
@@ -779,7 +784,7 @@ void loop() {
   }
   if (cur_check>last_check+2) {
     if (admin_user && last_check > 1000000000)
-      msg_pub_print(400, admin_user, String("task backlog time slice [")+last_check+","+cur_check+"] total "+(cur_check-last_check)+" seconds", true);
+      msg_pub_print(400, admin_user, String(config[DEVICE_NAME]) + String(" task backlog time slice [")+last_check+","+cur_check+"] total "+(cur_check-last_check)+" seconds", true);
   }
   for (;last_check<cur_check; last_check++) {
     for (int i=0; i<TASK_N; i++) {
