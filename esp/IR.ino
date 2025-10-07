@@ -251,16 +251,20 @@ void LED_flash(int n) { // 闪烁n次
 }
 
 void save_config() {
+  Serial.println("save config ...");
   File f = SPIFFS.open(config_filename, "w");
   for (int i=0; i<CONFIG_CNT; i++) {
+    Serial.println(config[i]);
     f.write((char *)&config[i], CONFIG_LEN);
   }
   f.close();
 }
 void load_config() {
+  Serial.println("load config ...");
   File f = SPIFFS.open(config_filename, "r");
   for (int i=0; i<CONFIG_CNT; i++) {
     f.read((uint8_t *) &config[i], CONFIG_LEN);
+    Serial.println(config[i]);
   }
   f.close();
 }
@@ -736,7 +740,7 @@ void setup() {
   // }
   // file system
   SPIFFS.begin();
-  
+  Serial.println("load IR in disk ...");
   // load copyed IR
   for (int i=0; i<COPY_N; i++) {
     File f = SPIFFS.open(copy_base_filename+i, "r");
@@ -784,7 +788,7 @@ void loop() {
   }
   if (cur_check>last_check+2) {
     if (admin_user && last_check > 1000000000)
-      msg_pub_print(400, admin_user, String(config[DEVICE_NAME]) + String(" task backlog time slice [")+last_check+","+cur_check+"] total "+(cur_check-last_check)+" seconds", true);
+      msg_pub_print(400, admin_user, String(config[DEVICE_NAME]) + String(": task backlog time slice [")+last_check+","+cur_check+"] total "+(cur_check-last_check)+" seconds", true);
   }
   for (;last_check<cur_check; last_check++) {
     for (int i=0; i<TASK_N; i++) {
