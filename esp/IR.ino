@@ -460,7 +460,7 @@ void msg_pub_print(int code, uint64_t uid, const String& msg, int reset) {
   if (reset) rdoc.clear();
   rdoc["chat_id"] = uid;
   rdoc["code"] = code;
-  rdoc["message"] = msg;
+  rdoc["message"] = String(config[DEVICE_NAME]) + ": " + msg;
   String result;
   serializeJson(rdoc, result);
   pc.publish(config[MQTT_PUBTOPIC], result.c_str());
@@ -788,7 +788,7 @@ void loop() {
   }
   if (cur_check>last_check+2) {
     if (admin_user && last_check > 1000000000)
-      msg_pub_print(400, admin_user, String(config[DEVICE_NAME]) + String(": task backlog time slice [")+last_check+","+cur_check+"] total "+(cur_check-last_check)+" seconds", true);
+      msg_pub_print(400, admin_user, String("task backlog time slice [")+last_check+","+cur_check+"] total "+(cur_check-last_check)+" seconds", true);
   }
   for (;last_check<cur_check; last_check++) {
     for (int i=0; i<TASK_N; i++) {
@@ -814,7 +814,7 @@ void loop() {
   for (int i=0; i<eqsz; i++) {
     int xid = exec_queue[i]->xid;
     irsend.sendRaw(copy_signal[xid], copy_length[xid], 38);
-    msg_pub_print(200, exec_queue[i]->uid, "task:exec "+copy_name[xid]+" success", true);
+    msg_pub_print(200, exec_queue[i]->uid, "exec "+copy_name[xid]+" success", true);
     delay(800); // 同时执行的指令，间隔0.8s
   }
   eqsz = 0;
