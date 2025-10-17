@@ -240,6 +240,7 @@ PubSubClient pc(wc);
 StaticJsonDocument<1536> doc, rdoc;
 
 size_t last_check;
+unsigned long start_time_millis; // 记录系统启动时间
 
 void LED_flash(int n) { // 闪烁n次
   for (int i=0; i<n; i++) {
@@ -248,6 +249,21 @@ void LED_flash(int n) { // 闪烁n次
     digitalWrite(LED_BUILTIN, HIGH);
     delay(100);
   }
+}
+
+String formatUptime() {
+  unsigned long current_millis = millis();
+  unsigned long uptime_seconds = (current_millis - start_time_millis) / 1000;
+  unsigned long days = uptime_seconds / 86400;
+  uptime_seconds %= 86400;
+  unsigned long hours = uptime_seconds / 3600;
+  uptime_seconds %= 3600;
+  unsigned long minutes = uptime_seconds / 60;
+  unsigned long seconds = uptime_seconds % 60;
+  char buf[128] = {0};
+  snprintf(buf, sizeof(buf), "%lud%luh%lum%lus", days, hours, minutes, seconds);
+  while (*buf == '0' || *buf == 'd' || *buf == 'h' || *buf == 'm') buf++; // 去掉前导零和单位
+  return String(buf);
 }
 
 void save_config() {
@@ -460,7 +476,7 @@ void msg_pub_print(int code, uint64_t uid, const String& msg, int reset) {
   if (reset) rdoc.clear();
   rdoc["chat_id"] = uid;
   rdoc["code"] = code;
-  rdoc["message"] = String(config[DEVICE_NAME]) + ": " + msg;
+  rdoc["message"] = String(config[DEVICE_NAME]) + ": " + msg + " [RunTime: " + formatUptime() + "]";
   String result;
   serializeJson(rdoc, result);
   pc.publish(config[MQTT_PUBTOPIC], result.c_str());
@@ -716,6 +732,9 @@ void record_copy(String& sc) {
 
 
 void setup() {
+  // 记录启动时间
+  start_time_millis = millis();
+  
   // led bultin
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
