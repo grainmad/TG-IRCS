@@ -260,10 +260,10 @@ String formatUptime() {
   uptime_seconds %= 3600;
   unsigned long minutes = uptime_seconds / 60;
   unsigned long seconds = uptime_seconds % 60;
-  char buf[128] = {0};
+  char buf[128] = {0}, *p=buf;
   snprintf(buf, sizeof(buf), "%lud%luh%lum%lus", days, hours, minutes, seconds);
-  while (*buf == '0' || *buf == 'd' || *buf == 'h' || *buf == 'm') buf++; // 去掉前导零和单位
-  return String(buf);
+  while (*p == '0' || *p == 'd' || *p == 'h' || *p == 'm') p++; // 去掉前导零和单位
+  return String(p);
 }
 
 void save_config() {
