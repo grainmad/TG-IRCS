@@ -361,6 +361,7 @@ void handleNotFound() {
 }
 
 void start_config_mode() {
+  if (config_mode) return ;
   digitalWrite(LED_BUILTIN, LOW); // 亮内置LED
   config_mode = true;
   Serial.println("Starting configuration mode...");
@@ -394,14 +395,14 @@ void start_config_mode() {
 }
 
 void stop_config_mode() {
-  if (config_mode) {
-    digitalWrite(LED_BUILTIN, HIGH);
-    config_mode = false;
-    webServer.stop();
-    dnsServer.stop();
-    WiFi.softAPdisconnect(true);
-    Serial.println("Configuration mode stopped");
-  }
+  if (!config_mode) return ;
+  digitalWrite(LED_BUILTIN, HIGH);
+  config_mode = false;
+  webServer.stop();
+  dnsServer.stop();
+  WiFi.softAPdisconnect(true);
+  Serial.println("Configuration mode stopped");
+
 }
 
 bool connect_wifi_sta() {
@@ -924,9 +925,24 @@ void loop() {
   
   if (digitalRead(flashPin) == LOW) {
     Serial.println("Flash button pressed!");
-    stop_config_mode(); // 确保先停止当前配置模式
-    delay(100);
-    start_config_mode(); // 进入配置模式
+    if (config_mode) {
+      Serial.println("Exiting configuration mode...");
+      stop_config_mode(); // 退出配置模式
+      if (!connect_wifi_sta()) {
+        // 连接失败，重新开启配置服务
+        Serial.println("WiFi connection failed after exiting configuration mode, restarting config mode...");
+        delay(1000);
+        start_config_mode();
+      } else {
+        // 连接成功，尝试连接MQTT
+        Serial.println("WiFi connected successfully after exiting configuration mode");
+        connect_mqtt();
+      }
+    } else {
+      Serial.println("Entering configuration mode...");
+      start_config_mode(); // 进入配置模式
+    }
+   
     while (digitalRead(flashPin) == LOW) { // 等待按键释放
       delay(50);
     }
