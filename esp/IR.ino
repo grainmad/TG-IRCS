@@ -19,133 +19,133 @@
 
 // 东八区时差（秒）
 #define TIMEZONE_OFFSET (8 * 3600)
-
+#define EPOCH_OFFSET (1000000000)
 // cron字段结构
 typedef struct {
-    int sec[60];     // 秒 0-59
-    int min[60];     // 分钟 0-59
-    int hour[24];    // 小时 0-23
-    int day[32];     // 日 1-31
-    int month[13];   // 月 1-12
-    int wday[8];     // 星期 0-7 (0和7都表示周日)
+  int sec[60];     // 秒 0-59
+  int min[60];     // 分钟 0-59
+  int hour[24];    // 小时 0-23
+  int day[32];     // 日 1-31
+  int month[13];   // 月 1-12
+  int wday[8];     // 星期 0-7 (0和7都表示周日)
 } CronPattern;
 
 // 解析数字范围，如 "1-5" 或 "*/2"
 int parse_range(const char *field, int *array, int min_val, int max_val) {
-    char *token, *saveptr;
-    char field_copy[256];
-    strcpy(field_copy, field);
-    
-    token = strtok_r(field_copy, ",", &saveptr);
-    while (token != NULL) {
-        // 处理 "*" 或 "*/n"
-        if (token[0] == '*') {
-            int step = 1;
-            if (strlen(token) > 1 && token[1] == '/') {
-                step = atoi(token + 2);
-            }
-            for (int i = min_val; i <= max_val; i += step) {
-                array[i] = 1;
-            }
+  char *token, *saveptr;
+  char field_copy[256];
+  strcpy(field_copy, field);
+  
+  token = strtok_r(field_copy, ",", &saveptr);
+  while (token != NULL) {
+    // 处理 "*" 或 "*/n"
+    if (token[0] == '*') {
+      int step = 1;
+      if (strlen(token) > 1 && token[1] == '/') {
+        step = atoi(token + 2);
+      }
+      for (int i = min_val; i <= max_val; i += step) {
+        array[i] = 1;
+      }
+    }
+    // 处理范围 "a-b" 或 "a-b/c"
+    else if (strchr(token, '-') != NULL) {
+      char *dash = strchr(token, '-');
+      *dash = '\0';
+      int start = atoi(token);
+      
+      char *end_part = dash + 1;
+      int end, step = 1;
+      
+      if (strchr(end_part, '/') != NULL) {
+        char *slash = strchr(end_part, '/');
+        *slash = '\0';
+        end = atoi(end_part);
+        step = atoi(slash + 1);
+      } else {
+        end = atoi(end_part);
+      }
+      
+      for (int i = start; i <= end; i += step) {
+        if (i >= min_val && i <= max_val) {
+          array[i] = 1;
         }
-        // 处理范围 "a-b" 或 "a-b/c"
-        else if (strchr(token, '-') != NULL) {
-            char *dash = strchr(token, '-');
-            *dash = '\0';
-            int start = atoi(token);
-            
-            char *end_part = dash + 1;
-            int end, step = 1;
-            
-            if (strchr(end_part, '/') != NULL) {
-                char *slash = strchr(end_part, '/');
-                *slash = '\0';
-                end = atoi(end_part);
-                step = atoi(slash + 1);
-            } else {
-                end = atoi(end_part);
-            }
-            
-            for (int i = start; i <= end; i += step) {
-                if (i >= min_val && i <= max_val) {
-                    array[i] = 1;
-                }
-            }
-        }
-        // 处理单个数字
-        else {
-            int num = atoi(token);
-            if (num >= min_val && num <= max_val) {
-                array[num] = 1;
-            }
-        }
-        
-        token = strtok_r(NULL, ",", &saveptr);
+      }
+    }
+    // 处理单个数字
+    else {
+      int num = atoi(token);
+      if (num >= min_val && num <= max_val) {
+        array[num] = 1;
+      }
     }
     
-    return 0;
+    token = strtok_r(NULL, ",", &saveptr);
+  }
+  
+  return 0;
 }
 
 // 解析cron表达式
 int parse_cron(const char *cron_expr, CronPattern *pattern) {
-    memset(pattern, 0, sizeof(CronPattern));
-    char expr_copy[512];
-    strcpy(expr_copy, cron_expr);
-    
-    char *fields[6];
-    int field_count = 0;
-    
-    // 分割字段
-    char *token = strtok(expr_copy, " \t");
-    while (token != NULL && field_count < 6) {
-        fields[field_count++] = token;
-        token = strtok(NULL, " \t");
-    }
-    
-    // 支持5字段和6字段两种格式
-    if (field_count == 5) {
-        // 5字段格式 (分 时 日 月 星期)
-        pattern->sec[0] = 1; // 默认0秒执行
-        parse_range(fields[0], pattern->min, 0, 59);     // 分钟
-        parse_range(fields[1], pattern->hour, 0, 23);    // 小时
-        parse_range(fields[2], pattern->day, 1, 31);     // 日
-        parse_range(fields[3], pattern->month, 1, 12);   // 月
-        parse_range(fields[4], pattern->wday, 0, 7);     // 星期
-    } else if (field_count == 6) {
-        // 6字段格式 (秒 分 时 日 月 星期)
-        parse_range(fields[0], pattern->sec, 0, 59);     // 秒
-        parse_range(fields[1], pattern->min, 0, 59);     // 分钟
-        parse_range(fields[2], pattern->hour, 0, 23);    // 小时
-        parse_range(fields[3], pattern->day, 1, 31);     // 日
-        parse_range(fields[4], pattern->month, 1, 12);   // 月
-        parse_range(fields[5], pattern->wday, 0, 7);     // 星期
-    } else {
-        return -1;
-    }
-    
-    // 处理星期0和7都表示周日
-    if (pattern->wday[0] || pattern->wday[7]) {
-        pattern->wday[0] = pattern->wday[7] = 1;
-    }
-    
-    return 0;
+  memset(pattern, 0, sizeof(CronPattern));
+  char expr_copy[512];
+  strcpy(expr_copy, cron_expr);
+  
+  char *fields[6];
+  int field_count = 0;
+  
+  // 分割字段
+  char *token = strtok(expr_copy, " \t");
+  while (token != NULL && field_count < 6) {
+    fields[field_count++] = token;
+    token = strtok(NULL, " \t");
+  }
+  
+  // 支持5字段和6字段两种格式
+  if (field_count == 5) {
+    // 5字段格式 (分 时 日 月 星期)
+    pattern->sec[0] = 1; // 默认0秒执行
+    parse_range(fields[0], pattern->min, 0, 59);     // 分钟
+    parse_range(fields[1], pattern->hour, 0, 23);    // 小时
+    parse_range(fields[2], pattern->day, 1, 31);     // 日
+    parse_range(fields[3], pattern->month, 1, 12);   // 月
+    parse_range(fields[4], pattern->wday, 0, 7);     // 星期
+  } else if (field_count == 6) {
+    // 6字段格式 (秒 分 时 日 月 星期)
+    parse_range(fields[0], pattern->sec, 0, 59);     // 秒
+    parse_range(fields[1], pattern->min, 0, 59);     // 分钟
+    parse_range(fields[2], pattern->hour, 0, 23);    // 小时
+    parse_range(fields[3], pattern->day, 1, 31);     // 日
+    parse_range(fields[4], pattern->month, 1, 12);   // 月
+    parse_range(fields[5], pattern->wday, 0, 7);     // 星期
+  } else {
+    return -1;
+  }
+  
+  // 处理星期0和7都表示周日
+  if (pattern->wday[0] || pattern->wday[7]) {
+    pattern->wday[0] = pattern->wday[7] = 1;
+  }
+  
+  return 0;
 }
 
 // 检查时间是否匹配cron模式
 int match_cron(time_t timestamp, const CronPattern *pattern) {
-    // 转换为东八区时间
-    timestamp += TIMEZONE_OFFSET;
-    struct tm *tm_info = gmtime(&timestamp);
-    
-    // 检查各字段是否匹配
-    if (!pattern->sec[timestamp % 60]) return 0;        // 秒
-    if (!pattern->min[tm_info->tm_min]) return 0;
-    if (!pattern->hour[tm_info->tm_hour]) return 0;
-    if (!pattern->day[tm_info->tm_mday]) return 0;
-    if (!pattern->month[tm_info->tm_mon + 1]) return 0;  // tm_mon是0-11
-    if (!pattern->wday[tm_info->tm_wday]) return 0;      // tm_wday是0-6
-    
-    return 1;
+  // 转换为东八区时间
+  timestamp += TIMEZONE_OFFSET;
+  struct tm *tm_info = gmtime(&timestamp);
+  
+  // 检查各字段是否匹配
+  if (!pattern->sec[timestamp % 60]) return 0;        // 秒
+  if (!pattern->min[tm_info->tm_min]) return 0;
+  if (!pattern->hour[tm_info->tm_hour]) return 0;
+  if (!pattern->day[tm_info->tm_mday]) return 0;
+  if (!pattern->month[tm_info->tm_mon + 1]) return 0;  // tm_mon是0-11
+  if (!pattern->wday[tm_info->tm_wday]) return 0;      // tm_wday是0-6
+  
+  return 1;
 }
 /* end cron matcher */
 
@@ -634,7 +634,6 @@ void solve_msg(String Msg) {
       tasklist[task_id].cron = cron;
       tasklist[task_id].taskname = taskname;
       msg_pub_print(200, uid, "add "+name+" to tasklist", false);
-
     }
     
   }
@@ -803,11 +802,11 @@ void loop() {
   // task slover
   size_t cur_check = timeClient.getEpochTime();
   // 没有联网，时间是开机时间
-  if (last_check < 1000000000 && 1000000000 < cur_check) { // 第一次开机没有成功连上wifi，当前已连接
+  if (last_check < EPOCH_OFFSET && EPOCH_OFFSET < cur_check) { // 第一次开机没有成功连上wifi，当前已连接
     last_check = cur_check;
   }
   if (cur_check>last_check+2) {
-    if (admin_user && last_check > 1000000000)
+    if (admin_user && last_check > EPOCH_OFFSET)
       msg_pub_print(400, admin_user, String("task backlog time slice [")+last_check+","+cur_check+"] total "+(cur_check-last_check)+" seconds", true);
   }
   for (;last_check<cur_check; last_check++) {
