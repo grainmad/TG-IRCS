@@ -600,9 +600,9 @@ void solve_msg(String Msg) {
       
       String name = cmds.substring(i,j);
       uint64_t start = doc["start"]; 
-      start += t;// 指令间间隔一秒
       uint64_t freq = doc["freq"];
       uint64_t remain = doc["remain"];
+      uint64_t delay = doc["delay"];
       String cron = doc["cron"];
       String taskname = doc["taskname"];
       // Serial.println(name+" "+start+" "+freq);
@@ -632,7 +632,8 @@ void solve_msg(String Msg) {
       
       tasklist[task_id].remain = remain;
       tasklist[task_id].freq = freq;
-      tasklist[task_id].start = start;
+      // 有start则用start否则用当前单片机时间加delay，t为避免多个任务同一时间启动加上偏移
+      tasklist[task_id].start = (start ? start : timeClient.getEpochTime() + delay) + t;
       tasklist[task_id].cmd = name;
       tasklist[task_id].xid = xid;
       tasklist[task_id].uid = uid;

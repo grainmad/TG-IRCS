@@ -41,23 +41,10 @@ class Service:
     def exec(self, message):
         self.logger.info(f"执行exec命令: user_id={message.from_user.id}, chat_id={message.chat.id}")
         try:
-            def parse_start(ts):
+            def parse_start(ts): # 输入为时间戳或日期
                 if ts.isdigit():
                     return int(ts)
-                if all(ch in "dhms0123456789" for ch in ts):
-                    cur = int(time.time())
-                    num = 0
-                    for i in ts:
-                        if i.isdigit():
-                            num = num*10+int(i)
-                        else:
-                            if i == 'd': cur += num*24*60*60
-                            elif i == 'h': cur += num*60*60
-                            elif i == 'm': cur += num*60
-                            else: cur += num
-                            num = 0
-                    return cur
-                try:
+                try: 
                     time_format = "%Y-%m-%dT%H:%M:%S"
                     dt = datetime.strptime(ts, time_format)
                     tz = timezone(timedelta(hours=8))
@@ -66,6 +53,20 @@ class Service:
                     return int(timestamp)
                 except ValueError as e:
                     return 0
+            def parse_delay(ds):
+                if all(ch in "dhms0123456789" for ch in ts): # 以单片机时间为基准做延时
+                    delay, num = 0, 0
+                    for i in ts:
+                        if i.isdigit():
+                            num = num*10+int(i)
+                        else:
+                            if i == 'd':  delay += num*24*60*60
+                            elif i == 'h': delay += num*60*60
+                            elif i == 'm': delay += num*60
+                            else: delay += num
+                            num = 0
+                    return delay
+                return 0
             def parse_freq(cy):
                 if all(ch in "dhms0123456789" for ch in cy):
                     sc = 0
@@ -85,9 +86,9 @@ class Service:
                 if rm.isdigit():
                     return int(rm)
                 return 1
-            
-            data = {"cmd":"exec", "name":"", "start":0, "freq":0, "cron": "", "remain":1, "taskname":"", "chat_id":message.chat.id}
-            
+
+            data = {"cmd":"exec", "name":"", "start":0, "delay":0, "freq":0, "cron": "", "remain":1, "taskname":"", "chat_id":message.chat.id}
+
             if "cron(" in message.text:
                 txt = message.text
                 args = []
@@ -104,12 +105,12 @@ class Service:
                 for i, j in enumerate(txt):
                     if j == '(': cs = i+1
                     if j == ')': ce = i
-                    print(i, j, " = ", cs, ce)
+                    # print(i, j, " = ", cs, ce)
                 if cs < ce:
                     args.append(txt[cs:ce])
-                print(args)
+                # print(args)
                 args.extend([i for i in txt[ce+1:].split(' ') if i])
-                print(args)
+                # print(args)
                 
                 if 0<len(args) and args[0] : 
                     data["name"] = args[0]
@@ -140,6 +141,7 @@ class Service:
                 
                 if 1<len(args) and args[1] : 
                     data["start"] = parse_start(args[1])
+                    data["delay"] = parse_delay(args[1])
                 if 2<len(args) and args[2] : 
                     data["freq"] = parse_freq(args[2])
                 if 3<len(args) and args[3] : 
