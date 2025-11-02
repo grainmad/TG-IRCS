@@ -6,6 +6,7 @@ import util
 import mqtt
 from logging_config import setup_logging
 import logging
+import json
 
 # 在任何其他导入和代码之前初始化日志
 setup_logging()
@@ -39,7 +40,7 @@ def Permissions(func):
             logger.info(f"发送MQTT消息: topic={db['device']['ir_pub_topic']}, data={str(data)}")
             current_mqtt_publish(data)
             data['chat_id'] %= 100000 # 避免泄露完整chat_id
-            bot.send_message(message.chat.id, f"{str(data)} is transmitted")
+            bot.send_message(message.chat.id, f"{json.dumps(data)} is transmitted")
     return wrapper
 
 ### Bot command handlers
@@ -88,7 +89,8 @@ def exec_alias(alias, message):
                 if data:
                     logger.info(f"命令执行成功: {cmd}, data={str(data)}")
                     current_mqtt_publish(data)
-                    bot.send_message(message.chat.id, f"{str(data)} is transmitted")
+                    data['chat_id'] %= 100000 # 避免泄露完整chat_id
+                    bot.send_message(message.chat.id, f"{json.dumps(data)} is transmitted")
             except AttributeError as e:
                 logger.error(f"命令不存在: {cmd}")
                 bot.send_message(message.chat.id, f"command {cmd} not found")
@@ -177,7 +179,8 @@ def taskid_(call): # 任务菜单 终止任务 id
     data = service.terminate(call.message)
     if data:
         current_mqtt_publish(data)
-        bot.send_message(call.message.chat.id, f"{str(data)} is transmitted")
+        data['chat_id'] %= 100000 # 避免泄露完整chat_id
+        bot.send_message(message.chat.id, f"{json.dumps(data)} is transmitted")
     bot.answer_callback_query(call.id)
     bot_tasklist(call.message) # 刷新任务列表
 
@@ -187,7 +190,8 @@ def taskname_(call): # 任务菜单 终止任务 name
     data = service.terminatename(call.message)
     if data:
         current_mqtt_publish(data)
-        bot.send_message(call.message.chat.id, f"{str(data)} is transmitted")
+        data['chat_id'] %= 100000 # 避免泄露完整chat_id
+        bot.send_message(call.message.chat.id, f"{json.dumps(data)} is transmitted")
     bot.answer_callback_query(call.id)
     bot_tasklist(call.message) # 刷新任务列表
 

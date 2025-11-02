@@ -488,7 +488,12 @@ void msg_pub_print(int code, uint64_t uid, const String& msg, int reset) {
 void solve_msg(String Msg) {
   doc.clear();
   rdoc.clear();
-  deserializeJson(doc, Msg);
+  DeserializationError error = deserializeJson(doc, Msg);
+  if (error) {
+    Serial.print("JSON parse error: ");
+    Serial.println(error.c_str());
+    return ;
+  }
   String cmd = doc["cmd"];
   uint64_t uid = doc["chat_id"];
 
@@ -588,7 +593,7 @@ void solve_msg(String Msg) {
 
   if (cmd == "exec") {                            // exec cmd
     String cmds = doc["name"];
-    Serial.println(cmds);
+    // Serial.println(cmds);
     int cmds_len = cmds.length();
     for (int i=0, t=0, j; (j=i)<cmds_len; t++, i=j+1) { // 以逗号分割命令
       while (j<cmds_len && cmds.charAt(j) != ',') j++;
@@ -734,15 +739,16 @@ void record_copy(String& sc) {
 void setup() {
   // 记录启动时间
   start_time_millis = millis();
-  
-  // led bultin
+
+  // led builtin
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
 
   // serial
-  Serial.begin(kBaudRate, SERIAL_8N1, SERIAL_TX_ONLY);
+  Serial.begin(kBaudRate, SERIAL_8N1, SERIAL_FULL);
+  Serial.setTimeout(1000); // 设置超时时间为1000ms
   while (!Serial)  // Wait for the serial connection to be establised.
-  delay(50);
+    delay(50);
   Serial.println();
   Serial.printf("Free Heap: %d\n", ESP.getFreeHeap()); // 检查内存
   // irsend 
@@ -799,7 +805,15 @@ void setup() {
 }
 
 void loop() {
-  // task slover
+  // handle rx
+  if (Serial.available()) {
+    String data = Serial.readStringUntil('\n');
+    Serial.printf("Serial recv: [%s]", data.c_str());
+    Serial.println("");
+    data.trim(); // 去除换行符和空格
+    solve_msg(data); 
+  }
+  // task solver
   size_t cur_check = timeClient.getEpochTime();
   // 没有联网，时间是开机时间
   if (last_check < EPOCH_OFFSET && EPOCH_OFFSET < cur_check) { // 第一次开机没有成功连上wifi，当前已连接
