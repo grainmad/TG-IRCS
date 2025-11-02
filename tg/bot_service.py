@@ -53,7 +53,7 @@ class Service:
                     return int(timestamp)
                 except ValueError as e:
                     return 0
-            def parse_delay(ds):
+            def parse_delay(ts):
                 if all(ch in "dhms0123456789" for ch in ts): # 以单片机时间为基准做延时
                     delay, num = 0, 0
                     for i in ts:
