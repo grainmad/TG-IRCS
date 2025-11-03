@@ -201,6 +201,11 @@ decode_results results;  // Somewhere to store the results
 const uint16_t kIrLed = 12;  // 设置kIrLed为GPIO12，D6脚
 IRsend irsend(kIrLed);  // 将kIrLed设置发送信息
 
+// 串口接收字符串环形队列
+#define RX_RING_N 32
+String rx_ring[RX_RING_N];
+int rx_head=0, rx_tail=0;
+
 // 持久化红外指令数组到闪存文件系统
 String copy_base_filename = "/copy_signal";
 #define COPY_N 12
@@ -213,7 +218,7 @@ String comming_copy_name;
 int copy_mode = 0;
 
 // 同时执行的最大任务数
-#define TASK_N 12
+#define TASK_N 16
 struct Task {
   int xid;
   uint64_t remain;
@@ -485,14 +490,14 @@ void msg_pub_print(int code, uint64_t uid, const String& msg, int reset) {
 }
 
  
-void solve_msg(String Msg) {
+int solve_msg(String Msg) {
   doc.clear();
   rdoc.clear();
   DeserializationError error = deserializeJson(doc, Msg);
   if (error) {
     Serial.print("JSON parse error: ");
     Serial.println(error.c_str());
-    return ;
+    return -1;
   }
   String cmd = doc["cmd"];
   uint64_t uid = doc["chat_id"];
@@ -660,7 +665,7 @@ void solve_msg(String Msg) {
       // not exist
       if (i == COPY_N) {
         msg_pub_print(400, uid, "copy failure: old name ["+old+"] not exist!", false);
-        return ;
+        return -1;
       }
     } else { // no old
       // check update
@@ -681,6 +686,7 @@ void solve_msg(String Msg) {
     copy_mode = 1;
     msg_pub_print(200, uid, "copy start ok", false);
   }
+  return 0;
 }
 
 void sub_msg_hander(char* topic, byte* payload,unsigned int length){
@@ -807,12 +813,25 @@ void setup() {
 
 void loop() {
   // handle rx
-  if (Serial.available()) {
-    String data = Serial.readStringUntil('\n');
-    Serial.printf("Serial recv: [%s]", data.c_str());
-    Serial.println("");
-    data.trim(); // 去除换行符和空格
-    solve_msg(data); 
+  while (Serial.available()) {
+    if ((rx_tail + 1) % RX_RING_N != rx_head) { // 有空间
+      rx_ring[rx_tail] = Serial.readStringUntil('\n');
+      rx_tail = (rx_tail + 1) % RX_RING_N;
+    } else {
+      Serial.readStringUntil('\n'); // 丢弃数据
+      Serial.println("RX ring buffer full, dropping data");
+      msg_pub_print(400, admin_user, "RX ring buffer full, dropping data", true);
+    }
+  }
+  while (rx_head != rx_tail) {
+    // rx_ring[rx_head].trim(); // 去除换行符和空格
+    Serial.printf("Serial process: [%s]\n", rx_ring[rx_head].c_str());
+    if (-1 == solve_msg(rx_ring[rx_head])) {
+      rx_head = rx_tail;
+      msg_pub_print(400, admin_user, "Serial rx message parse error", true);
+    } else {
+      rx_head = (rx_head + 1) % RX_RING_N;
+    }
   }
   // task solver
   size_t cur_check = timeClient.getEpochTime();
