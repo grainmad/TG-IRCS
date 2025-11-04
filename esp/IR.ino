@@ -202,9 +202,11 @@ const uint16_t kIrLed = 12;  // 设置kIrLed为GPIO12，D6脚
 IRsend irsend(kIrLed);  // 将kIrLed设置发送信息
 
 // 串口接收字符串环形队列
-#define RX_RING_N 32
-String rx_ring[RX_RING_N];
+#define RX_RING_N 4096
+#define MAX_LOOP_EMPTY 200
+char rx_ring[RX_RING_N];
 int rx_head=0, rx_tail=0;
+int loop_empty_count = 0; // 每次主循环发现队列非空计数+1，计数达到一定量则重置队列（防止串口发送错误数据破坏队列）
 
 // 持久化红外指令数组到闪存文件系统
 String copy_base_filename = "/copy_signal";
@@ -665,7 +667,7 @@ int solve_msg(String Msg) {
       // not exist
       if (i == COPY_N) {
         msg_pub_print(400, uid, "copy failure: old name ["+old+"] not exist!", false);
-        return -1;
+        return 0;
       }
     } else { // no old
       // check update
@@ -812,25 +814,38 @@ void setup() {
 }
 
 void loop() {
+  // clean queue
+  if (++loop_empty_count > MAX_LOOP_EMPTY) {
+    loop_empty_count = rx_head = rx_tail = 0;
+  }
   // handle rx
-  while (Serial.available()) {
+  while (Serial.available()) { // 多条指令，可能会读入截断的
+    char c = Serial.read();
     if ((rx_tail + 1) % RX_RING_N != rx_head) { // 有空间
-      rx_ring[rx_tail] = Serial.readStringUntil('\n');
+      rx_ring[rx_tail] = c;
       rx_tail = (rx_tail + 1) % RX_RING_N;
     } else {
-      Serial.readStringUntil('\n'); // 丢弃数据
       Serial.println("RX ring buffer full, dropping data");
       msg_pub_print(400, admin_user, "RX ring buffer full, dropping data", true);
     }
   }
-  while (rx_head != rx_tail) {
-    // rx_ring[rx_head].trim(); // 去除换行符和空格
-    Serial.printf("Serial process: [%s]\n", rx_ring[rx_head].c_str());
-    if (-1 == solve_msg(rx_ring[rx_head])) {
-      rx_head = rx_tail;
-      msg_pub_print(400, admin_user, "Serial rx message parse error", true);
-    } else {
+  // 确保包含缓冲区是完整的一条或多条指令
+  while (rx_head != rx_tail && rx_ring[(rx_tail+RX_RING_N-1)%RX_RING_N] == '\n') { // 只读ascii 以不可见字符分割消息
+    String msg;
+    msg.reserve(512);
+    // 去除前缀不可见字符
+    while (rx_head != rx_tail && (rx_ring[rx_head] < 32 || rx_ring[rx_head] > 126)) {
       rx_head = (rx_head + 1) % RX_RING_N;
+    }
+    // 读取可见字符
+    while (rx_head != rx_tail && 32 <= rx_ring[rx_head] && rx_ring[rx_head] <= 126) {
+      msg += rx_ring[rx_head];
+      rx_head = (rx_head + 1) % RX_RING_N;
+    }
+    if (msg.length() > 0) {
+      if (-1 == solve_msg(msg)) {
+        msg_pub_print(400, admin_user, "Serial rx message parse error", true);
+      }
     }
   }
   // task solver
@@ -868,7 +883,7 @@ void loop() {
     int xid = exec_queue[i]->xid;
     irsend.sendRaw(copy_signal[xid], copy_length[xid], 38);
     msg_pub_print(200, exec_queue[i]->uid, "exec "+copy_name[xid]+" success", true);
-    delay(800); // 同时执行的指令，间隔0.8s
+    delay(500); // 同时执行的指令，间隔0.5s
   }
   eqsz = 0;
 
@@ -980,5 +995,5 @@ void loop() {
       delay(50);
     }
   }
-  delay(50);
+  delay(20);
 }
