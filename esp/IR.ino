@@ -203,7 +203,7 @@ IRsend irsend(kIrLed);  // 将kIrLed设置发送信息
 
 // 串口接收字符串环形队列
 #define RX_RING_N 4096
-#define MAX_LOOP_EMPTY 200
+#define MAX_LOOP_EMPTY 400
 char rx_ring[RX_RING_N];
 int rx_head=0, rx_tail=0;
 int loop_empty_count = 0; // 每次主循环发现队列非空计数+1，计数达到一定量则重置队列（防止串口发送错误数据破坏队列）
@@ -855,8 +855,11 @@ void loop() {
 
 
   // clean rx queue
-  if (++loop_empty_count > MAX_LOOP_EMPTY) {
-    loop_empty_count = rx_head = rx_tail = 0;
+  if (rx_head == rx_tail) { // 队列已处理完，重置计数
+    loop_empty_count = 0;
+  } else if (++loop_empty_count > MAX_LOOP_EMPTY) { // 队列长时间未处理完，可能被错误数据破坏，重置队列
+    loop_empty_count = 0;
+    rx_head = rx_tail;
   }
   // handle rx
   while (Serial.available()) { // 多条指令，可能会读入截断的
@@ -873,16 +876,18 @@ void loop() {
   while (rx_head != rx_tail && rx_ring[rx_head] != 0x3f) rx_head = (rx_head + 1) % RX_RING_N;
   // 解析协议头
   uint64_t len = 0;
-  uint8_t xors = 0;
+  uint8_t xors = 0, has_head = 0;
   if ((rx_tail + RX_RING_N - rx_head) % RX_RING_N >= 6) {
     for (int i = 1; i < 5; i++) { // 读长度
       len = len<<8 | (uint8_t)rx_ring[(rx_head+i)%RX_RING_N];
     }
     xors = (uint8_t)rx_ring[(rx_head + 5) % RX_RING_N];
+    has_head = 1;
   }
   // 缓冲队列可能不完整，多次大循环后达到完整再处理
-  while (len && (rx_tail + RX_RING_N - rx_head) % RX_RING_N >= len + 6) {
-    rx_ring[rx_head] = 0; // 清理魔数，队列定时清空时，读到旧魔数影响解析
+  if (has_head && (rx_tail + RX_RING_N - rx_head) % RX_RING_N >= len + 6) {
+    // Serial.printf("Serial rx message len: %d\r\n", len);
+    // Serial.printf("Serial rx message xors: %02x\r\n", xors);
     rx_head = (rx_head + 6) % RX_RING_N;
     // 读数据
     String data;
@@ -893,10 +898,10 @@ void loop() {
       xors ^= (uint8_t)ch;
       rx_head = (rx_head + 1) % RX_RING_N;
     }
+    // Serial.printf("Serial rx message data: %s xors: %02x\n", data.c_str(), xors);
     // 校验
     if (xors != 0) {
       msg_pub_print(400, admin_user, "Serial rx message xor sum error", true);
-      break;;
     }
     if (-1 == solve_msg(data)) {
       msg_pub_print(400, admin_user, "Serial rx message parse error", true);
