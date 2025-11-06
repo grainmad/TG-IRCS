@@ -814,40 +814,6 @@ void setup() {
 }
 
 void loop() {
-  // clean queue
-  if (++loop_empty_count > MAX_LOOP_EMPTY) {
-    loop_empty_count = rx_head = rx_tail = 0;
-  }
-  // handle rx
-  while (Serial.available()) { // 多条指令，可能会读入截断的
-    char c = Serial.read();
-    if ((rx_tail + 1) % RX_RING_N != rx_head) { // 有空间
-      rx_ring[rx_tail] = c;
-      rx_tail = (rx_tail + 1) % RX_RING_N;
-    } else {
-      Serial.println("RX ring buffer full, dropping data");
-      msg_pub_print(400, admin_user, "RX ring buffer full, dropping data", true);
-    }
-  }
-  // 确保包含缓冲区是完整的一条或多条指令
-  while (rx_head != rx_tail && rx_ring[(rx_tail+RX_RING_N-1)%RX_RING_N] == '\n') { // 只读ascii 以不可见字符分割消息
-    String msg;
-    msg.reserve(512);
-    // 去除前缀不可见字符
-    while (rx_head != rx_tail && (rx_ring[rx_head] < 32 || rx_ring[rx_head] > 126)) {
-      rx_head = (rx_head + 1) % RX_RING_N;
-    }
-    // 读取可见字符
-    while (rx_head != rx_tail && 32 <= rx_ring[rx_head] && rx_ring[rx_head] <= 126) {
-      msg += rx_ring[rx_head];
-      rx_head = (rx_head + 1) % RX_RING_N;
-    }
-    if (msg.length() > 0) {
-      if (-1 == solve_msg(msg)) {
-        msg_pub_print(400, admin_user, "Serial rx message parse error", true);
-      }
-    }
-  }
   // task solver
   size_t cur_check = timeClient.getEpochTime();
   // 没有联网，时间是开机时间
@@ -877,7 +843,6 @@ void loop() {
     }
     if (eqsz == EXEC_Q_N) break;
   }
-  
   // exec task 
   for (int i=0; i<eqsz; i++) {
     int xid = exec_queue[i]->xid;
@@ -887,7 +852,59 @@ void loop() {
   }
   eqsz = 0;
 
+
+
+  // clean rx queue
+  if (++loop_empty_count > MAX_LOOP_EMPTY) {
+    loop_empty_count = rx_head = rx_tail = 0;
+  }
+  // handle rx
+  while (Serial.available()) { // 多条指令，可能会读入截断的
+    char c = Serial.read();
+    if ((rx_tail + 1) % RX_RING_N != rx_head) { // 有空间
+      rx_ring[rx_tail] = c;
+      rx_tail = (rx_tail + 1) % RX_RING_N;
+    } else {
+      Serial.println("RX ring buffer full, dropping data");
+      msg_pub_print(400, admin_user, "RX ring buffer full, dropping data", true);
+    }
+  }
+  // 解析串口协议 magic(0x3f) + len(4byte) + xors(1byte) + data(len byte)
+  while (rx_head != rx_tail && rx_ring[rx_head] != 0x3f) rx_head = (rx_head + 1) % RX_RING_N;
+  // 解析协议头
+  uint64_t len = 0;
+  uint8_t xors = 0;
+  if ((rx_tail + RX_RING_N - rx_head) % RX_RING_N >= 6) {
+    for (int i = 1; i < 5; i++) { // 读长度
+      len = len<<8 | (uint8_t)rx_ring[(rx_head+i)%RX_RING_N];
+    }
+    xors = (uint8_t)rx_ring[(rx_head + 5) % RX_RING_N];
+  }
+  // 缓冲队列可能不完整，多次大循环后达到完整再处理
+  while (len && (rx_tail + RX_RING_N - rx_head) % RX_RING_N >= len + 6) {
+    rx_ring[rx_head] = 0; // 清理魔数，队列定时清空时，读到旧魔数影响解析
+    rx_head = (rx_head + 6) % RX_RING_N;
+    // 读数据
+    String data;
+    data.reserve(len);
+    for (uint64_t i = 0; i < len; i++) {
+      char ch = rx_ring[rx_head];
+      data += ch;
+      xors ^= (uint8_t)ch;
+      rx_head = (rx_head + 1) % RX_RING_N;
+    }
+    // 校验
+    if (xors != 0) {
+      msg_pub_print(400, admin_user, "Serial rx message xor sum error", true);
+      break;;
+    }
+    if (-1 == solve_msg(data)) {
+      msg_pub_print(400, admin_user, "Serial rx message parse error", true);
+    }
+  }
   
+
+
   // 处理配置模式
   if (config_mode) {
     dnsServer.processNextRequest();
@@ -971,6 +988,8 @@ void loop() {
     }
   }
   
+
+
   if (digitalRead(flashPin) == LOW) {
     Serial.println("Flash button pressed!");
     if (config_mode) {
