@@ -8,7 +8,7 @@ eval "$(pyenv init - bash)"
 # 脚本名称
 SCRIPT_NAME=$(basename "$0")
 # 程序名称
-PROGRAM="tg_bot.py"
+PROGRAM="main.py"
 # 虚拟环境路径
 VENV_PATH="./.venv/bin/activate"
 # python版本

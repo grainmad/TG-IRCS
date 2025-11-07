@@ -473,11 +473,19 @@ void init_connect_wifi() {
   
 }
 // 定时函数执行耗时操作会崩溃，主循环loop中检测到标记变量则执行耗时操作
-Ticker wf, mt, lp;
-int tag_wifi=0, tag_mqtt=0, tag_loop = 0;
-void itv_wifi() { tag_wifi++; }
-void itv_mqtt() { tag_mqtt++; }
-void itv_loop() { tag_loop++; }
+Ticker tk;
+uint8_t tag_wifi=0, tag_mqtt=0, tag_loop = 0;
+uint64_t tag_time=0;
+void itv_loop() { // 0.5s
+  tag_time++;
+  tag_loop++;
+  if ((tag_time & 0x3f) == 0) { // 每32秒检查MQTT连接
+    tag_mqtt++;
+  } 
+  if ((tag_time & 0xff) == 0) { // 每64秒检查WiFi连接
+    tag_wifi++;
+  }
+}
 
 
 void msg_pub_print(int code, uint64_t uid, const String& msg, int reset) {
@@ -800,9 +808,7 @@ void setup() {
   init_connect_wifi();
   Serial.printf("macAddress is %s\r\n",WiFi.macAddress().c_str());  
   connect_mqtt();  // 连接MQTT
-  wf.attach(60, itv_wifi);
-  mt.attach(30, itv_mqtt);
-  lp.attach(0.5, itv_loop);
+  tk.attach(0.5, itv_loop);
 
 
   
