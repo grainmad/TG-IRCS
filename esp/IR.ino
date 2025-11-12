@@ -20,185 +20,185 @@
 #define EPOCH_OFFSET (1000000000)
 
 typedef struct {
-    uint64_t sec;
-    uint64_t min;
-    uint32_t hour;
-    uint32_t day;
-    uint16_t month;
-    uint8_t wday;
+  uint64_t sec;
+  uint64_t min;
+  uint32_t hour;
+  uint32_t day;
+  uint16_t month;
+  uint8_t wday;
 } CronPattern;
 
 /* ============ Cron 实现部分 ============ */
 
 // 设置位的辅助函数
 static void set_bit_in_array(void* array, int index, int element_size) {
-    if (element_size == 1) {
-        uint8_t *arr = (uint8_t*)array;
-        *arr |= (1 << index);
-    } else if (element_size == 2) {
-        uint16_t *arr = (uint16_t*)array;
-        *arr |= (1 << index);
-    } else if (element_size == 4) {
-        uint32_t *arr = (uint32_t*)array;
-        *arr |= (1 << index);
-    } else if (element_size == 8) {
-        uint64_t *arr = (uint64_t*)array;
-        *arr |= (1ULL << index);
-    }
+  if (element_size == 1) {
+    uint8_t *arr = (uint8_t*)array;
+    *arr |= (1 << index);
+  } else if (element_size == 2) {
+    uint16_t *arr = (uint16_t*)array;
+    *arr |= (1 << index);
+  } else if (element_size == 4) {
+    uint32_t *arr = (uint32_t*)array;
+    *arr |= (1 << index);
+  } else if (element_size == 8) {
+    uint64_t *arr = (uint64_t*)array;
+    *arr |= (1ULL << index);
+  }
 }
 
 // 获取位的辅助函数
 static int get_bit_from_array(const void* array, int index, int element_size) {
-    if (element_size == 1) {
-        const uint8_t *arr = (const uint8_t*)array;
-        return (*arr >> index) & 1;
-    } else if (element_size == 2) {
-        const uint16_t *arr = (const uint16_t*)array;
-        return (*arr >> index) & 1;
-    } else if (element_size == 4) {
-        const uint32_t *arr = (const uint32_t*)array;
-        return (*arr >> index) & 1;
-    } else if (element_size == 8) {
-        const uint64_t *arr = (const uint64_t*)array;
-        return (*arr >> index) & 1;
-    }
-    return 0;
+  if (element_size == 1) {
+    const uint8_t *arr = (const uint8_t*)array;
+    return (*arr >> index) & 1;
+  } else if (element_size == 2) {
+    const uint16_t *arr = (const uint16_t*)array;
+    return (*arr >> index) & 1;
+  } else if (element_size == 4) {
+    const uint32_t *arr = (const uint32_t*)array;
+    return (*arr >> index) & 1;
+  } else if (element_size == 8) {
+    const uint64_t *arr = (const uint64_t*)array;
+    return (*arr >> index) & 1;
+  }
+  return 0;
 }
 
 // 解析数字范围，如 "1-5" 或 "*/2"
 int parse_range(const char *field, void* array, int min_val, int max_val, int element_size) {
-    char *token, *saveptr;
-    char field_copy[32];
-    int count = 0;
-    
-    memset(array, 0, element_size);
-    
-    strcpy(field_copy, field);
-    
-    token = strtok_r(field_copy, ",", &saveptr);
-    while (token != NULL) {
-        // 处理 "*" 或 "*/n"
-        if (token[0] == '*') {
-            int step = 1;
-            if (strlen(token) > 1 && token[1] == '/') {
-                step = atoi(token + 2);
-                if (step <= 0) step = 1;
-            }
-            for (int i = min_val; i <= max_val; i += step) {
-                set_bit_in_array(array, i, element_size);
-                count++;
-            }
+  char *token, *saveptr;
+  char field_copy[32];
+  int count = 0;
+  
+  memset(array, 0, element_size);
+  
+  strcpy(field_copy, field);
+  
+  token = strtok_r(field_copy, ",", &saveptr);
+  while (token != NULL) {
+    // 处理 "*" 或 "*/n"
+    if (token[0] == '*') {
+      int step = 1;
+      if (strlen(token) > 1 && token[1] == '/') {
+        step = atoi(token + 2);
+        if (step <= 0) step = 1;
+      }
+      for (int i = min_val; i <= max_val; i += step) {
+        set_bit_in_array(array, i, element_size);
+        count++;
+      }
+    }
+    // 处理范围 "a-b" 或 "a-b/c"
+    else if (strchr(token, '-') != NULL) {
+      char range_copy[32];
+      strcpy(range_copy, token);
+      char *dash = strchr(range_copy, '-');
+      *dash = '\0';
+      int start = atoi(range_copy);
+      
+      char *end_part = dash + 1;
+      int end, step = 1;
+      
+      if (strchr(end_part, '/') != NULL) {
+        char *slash = strchr(end_part, '/');
+        *slash = '\0';
+        end = atoi(end_part);
+        step = atoi(slash + 1);
+        if (step <= 0) step = 1;
+      } else {
+        end = atoi(end_part);
+      }
+      
+      // 确保范围有效
+      if (start < min_val) start = min_val;
+      if (end > max_val) end = max_val;
+      
+      for (int i = start; i <= end; i += step) {
+        if (i >= min_val && i <= max_val) {
+          set_bit_in_array(array, i, element_size);
+          count++;
         }
-        // 处理范围 "a-b" 或 "a-b/c"
-        else if (strchr(token, '-') != NULL) {
-            char range_copy[32];
-            strcpy(range_copy, token);
-            char *dash = strchr(range_copy, '-');
-            *dash = '\0';
-            int start = atoi(range_copy);
-            
-            char *end_part = dash + 1;
-            int end, step = 1;
-            
-            if (strchr(end_part, '/') != NULL) {
-                char *slash = strchr(end_part, '/');
-                *slash = '\0';
-                end = atoi(end_part);
-                step = atoi(slash + 1);
-                if (step <= 0) step = 1;
-            } else {
-                end = atoi(end_part);
-            }
-            
-            // 确保范围有效
-            if (start < min_val) start = min_val;
-            if (end > max_val) end = max_val;
-            
-            for (int i = start; i <= end; i += step) {
-                if (i >= min_val && i <= max_val) {
-                    set_bit_in_array(array, i, element_size);
-                    count++;
-                }
-            }
-        }
-        // 处理单个数字
-        else {
-            int num = atoi(token);
-            if (num >= min_val && num <= max_val) {
-                set_bit_in_array(array, num, element_size);
-                count++;
-            }
-        }
-        
-        token = strtok_r(NULL, ",", &saveptr);
+      }
+    }
+    // 处理单个数字
+    else {
+      int num = atoi(token);
+      if (num >= min_val && num <= max_val) {
+        set_bit_in_array(array, num, element_size);
+        count++;
+      }
     }
     
-    return count > 0 ? 0 : -1;
+    token = strtok_r(NULL, ",", &saveptr);
+  }
+  
+  return count > 0 ? 0 : -1;
 }
 
 // 解析cron表达式
 int parse_cron(const char *cron_expr, CronPattern *pattern) {
-    memset(pattern, 0, sizeof(CronPattern));
-    char expr_copy[128];
-    strcpy(expr_copy, cron_expr);
-    
-    char *fields[6];
-    int field_count = 0;
-    
-    // 分割字段
-    char *token = strtok(expr_copy, " \t");
-    while (token != NULL && field_count < 6) {
-        fields[field_count++] = token;
-        token = strtok(NULL, " \t");
-    }
-    
-    int result = 0;
-    
-    // 支持5字段和6字段两种格式
-    if (field_count == 5) {
-        // 5字段格式 (分 时 日 月 星期)
-        set_bit_in_array(&pattern->sec, 0, 8); // 默认0秒执行
-        result |= parse_range(fields[0], &pattern->min, 0, 59, 8);     // 分钟
-        result |= parse_range(fields[1], &pattern->hour, 0, 23, 4);    // 小时
-        result |= parse_range(fields[2], &pattern->day, 1, 31, 4);     // 日
-        result |= parse_range(fields[3], &pattern->month, 1, 12, 2);   // 月
-        result |= parse_range(fields[4], &pattern->wday, 0, 7, 1);     // 星期
-    } else if (field_count == 6) {
-        // 6字段格式 (秒 分 时 日 月 星期)
-        result |= parse_range(fields[0], &pattern->sec, 0, 59, 8);     // 秒
-        result |= parse_range(fields[1], &pattern->min, 0, 59, 8);     // 分钟
-        result |= parse_range(fields[2], &pattern->hour, 0, 23, 4);    // 小时
-        result |= parse_range(fields[3], &pattern->day, 1, 31, 4);     // 日
-        result |= parse_range(fields[4], &pattern->month, 1, 12, 2);   // 月
-        result |= parse_range(fields[5], &pattern->wday, 0, 7, 1);     // 星期
-    } else {
-        return -1;
-    }
-    
-    // 处理星期0和7都表示周日
-    if (get_bit_from_array(&pattern->wday, 0, 1) || get_bit_from_array(&pattern->wday, 7, 1)) {
-        set_bit_in_array(&pattern->wday, 0, 1);
-        set_bit_in_array(&pattern->wday, 7, 1);
-    }
-    
-    return result;
+  memset(pattern, 0, sizeof(CronPattern));
+  char expr_copy[128];
+  strcpy(expr_copy, cron_expr);
+  
+  char *fields[6];
+  int field_count = 0;
+  
+  // 分割字段
+  char *token = strtok(expr_copy, " \t");
+  while (token != NULL && field_count < 6) {
+    fields[field_count++] = token;
+    token = strtok(NULL, " \t");
+  }
+  
+  int result = 0;
+  
+  // 支持5字段和6字段两种格式
+  if (field_count == 5) {
+    // 5字段格式 (分 时 日 月 星期)
+    set_bit_in_array(&pattern->sec, 0, 8); // 默认0秒执行
+    result |= parse_range(fields[0], &pattern->min, 0, 59, 8);     // 分钟
+    result |= parse_range(fields[1], &pattern->hour, 0, 23, 4);    // 小时
+    result |= parse_range(fields[2], &pattern->day, 1, 31, 4);     // 日
+    result |= parse_range(fields[3], &pattern->month, 1, 12, 2);   // 月
+    result |= parse_range(fields[4], &pattern->wday, 0, 7, 1);     // 星期
+  } else if (field_count == 6) {
+    // 6字段格式 (秒 分 时 日 月 星期)
+    result |= parse_range(fields[0], &pattern->sec, 0, 59, 8);     // 秒
+    result |= parse_range(fields[1], &pattern->min, 0, 59, 8);     // 分钟
+    result |= parse_range(fields[2], &pattern->hour, 0, 23, 4);    // 小时
+    result |= parse_range(fields[3], &pattern->day, 1, 31, 4);     // 日
+    result |= parse_range(fields[4], &pattern->month, 1, 12, 2);   // 月
+    result |= parse_range(fields[5], &pattern->wday, 0, 7, 1);     // 星期
+  } else {
+    return -1;
+  }
+  
+  // 处理星期0和7都表示周日
+  if (get_bit_from_array(&pattern->wday, 0, 1) || get_bit_from_array(&pattern->wday, 7, 1)) {
+    set_bit_in_array(&pattern->wday, 0, 1);
+    set_bit_in_array(&pattern->wday, 7, 1);
+  }
+  
+  return result;
 }
 
 // 检查时间是否匹配cron模式
 int match_cron(time_t timestamp, const CronPattern *pattern) {
-    // 转换为东八区时间
-    timestamp += TIMEZONE_OFFSET;
-    struct tm *tm_info = gmtime(&timestamp);
-    
-    // 检查各字段是否匹配
-    if (!get_bit_from_array(&pattern->sec, timestamp % 60, 8)) return 0;        // 秒
-    if (!get_bit_from_array(&pattern->min, tm_info->tm_min, 8)) return 0;       // 分
-    if (!get_bit_from_array(&pattern->hour, tm_info->tm_hour, 4)) return 0;     // 时
-    if (!get_bit_from_array(&pattern->day, tm_info->tm_mday, 4)) return 0;      // 日
-    if (!get_bit_from_array(&pattern->month, tm_info->tm_mon + 1, 2)) return 0; // 月
-    if (!get_bit_from_array(&pattern->wday, tm_info->tm_wday, 1)) return 0;     // 星期
-    
-    return 1;
+  // 转换为东八区时间
+  timestamp += TIMEZONE_OFFSET;
+  struct tm *tm_info = gmtime(&timestamp);
+  
+  // 检查各字段是否匹配
+  if (!get_bit_from_array(&pattern->sec, timestamp % 60, 8)) return 0;        // 秒
+  if (!get_bit_from_array(&pattern->min, tm_info->tm_min, 8)) return 0;       // 分
+  if (!get_bit_from_array(&pattern->hour, tm_info->tm_hour, 4)) return 0;     // 时
+  if (!get_bit_from_array(&pattern->day, tm_info->tm_mday, 4)) return 0;      // 日
+  if (!get_bit_from_array(&pattern->month, tm_info->tm_mon + 1, 2)) return 0; // 月
+  if (!get_bit_from_array(&pattern->wday, tm_info->tm_wday, 1)) return 0;     // 星期
+  
+  return 1;
 }
 /* end cron matcher */
 

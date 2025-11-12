@@ -210,7 +210,7 @@ class AliasCallbackHandler(CallbackHandler):
         """显示别名列表"""
         preferences = self.config.get_current_preferences()
         preference_msg = "\n".join([
-            f"+{k}\n    {chr(10).join('    ' + line for line in v)}"
+            f"+{k}\n{chr(10).join('    ' + line for line in v)}"
             for k, v in preferences.items()
         ])
         
